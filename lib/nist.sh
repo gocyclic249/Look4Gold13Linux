@@ -11,18 +11,24 @@ nist_search() {
 
     local encoded_keyword
     encoded_keyword="$(url_encode "$keyword")"
+    local days_back="${SEARCH_DAYS_BACK:-7}"
 
-    log_info "NIST NVD: querying '$keyword'"
+    log_info "NIST NVD: querying '$keyword' (last ${days_back} days)"
 
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
         log_info "[DRY RUN] Would call NIST NVD API for: $keyword"
         return 0
     fi
 
+    # NVD API accepts pubStartDate/pubEndDate in ISO 8601 format
+    local pub_start pub_end
+    pub_end="$(date -u '+%Y-%m-%dT%H:%M:%S.000')"
+    pub_start="$(date -u -d "${days_back} days ago" '+%Y-%m-%dT%H:%M:%S.000')"
+
     local response http_code body
     response=$(curl -s -w "\n%{http_code}" \
         -H "apiKey: $NIST_API_KEY" \
-        "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${encoded_keyword}" \
+        "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${encoded_keyword}&pubStartDate=${pub_start}&pubEndDate=${pub_end}" \
         2>/dev/null)
 
     http_code=$(echo "$response" | tail -n1)

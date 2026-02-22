@@ -12,20 +12,28 @@ brave_search() {
     local encoded_keyword
     encoded_keyword="$(url_encode "$keyword")"
     local count="${SEARCH_RESULT_COUNT:-10}"
+    local days_back="${SEARCH_DAYS_BACK:-7}"
 
-    log_info "Brave Search: querying '$keyword'"
+    log_info "Brave Search: querying '$keyword' (last ${days_back} days)"
 
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
         log_info "[DRY RUN] Would call Brave Search API for: $keyword"
         return 0
     fi
 
+    # Brave freshness parameter: pd=past day, pw=past week, pm=past month, py=past year
+    # or custom range YYYY-MM-DDtoYYYY-MM-DD
+    local from_date to_date freshness_param
+    to_date="$(date -u '+%Y-%m-%d')"
+    from_date="$(date -u -d "${days_back} days ago" '+%Y-%m-%d')"
+    freshness_param="${from_date}to${to_date}"
+
     local response http_code body
     response=$(curl -s -w "\n%{http_code}" \
         -H "Accept: application/json" \
         -H "Accept-Encoding: gzip" \
         -H "X-Subscription-Token: $BRAVE_API_KEY" \
-        "https://api.search.brave.com/res/v1/web/search?q=${encoded_keyword}&count=${count}" \
+        "https://api.search.brave.com/res/v1/web/search?q=${encoded_keyword}&count=${count}&freshness=${freshness_param}" \
         --compressed 2>/dev/null)
 
     http_code=$(echo "$response" | tail -n1)

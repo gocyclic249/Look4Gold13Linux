@@ -49,19 +49,17 @@ fi
 prompt_key() {
     local name="$1"
     local current="$2"
-    local desc="$3"
-    local masked=""
 
     if [[ -n "$current" ]]; then
-        masked="${current:0:4}...${current: -4}"
-        read -rp "  $name [$masked]: " value
+        local masked="${current:0:4}...${current: -4}"
+        read -rp "  $name [$masked] (Enter to keep): " value
         if [[ -z "$value" ]]; then
             echo "$current"
         else
             echo "$value"
         fi
     else
-        read -rp "  $name: " value
+        read -rp "  $name (Enter to skip): " value
         echo "$value"
     fi
 }

@@ -14,7 +14,7 @@ xai_analyze() {
         return 0
     fi
 
-    local model="${XAI_MODEL:-grok-3-latest}"
+    local model="${XAI_MODEL:-grok-4-1-fast-reasoning}"
     log_info "xAI: sending findings for analysis (model: $model)"
 
     local system_prompt
