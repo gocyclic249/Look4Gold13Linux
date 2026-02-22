@@ -178,33 +178,56 @@ $findings_json"
         // []
     ' 2>/dev/null)
 
-    # Strip markdown code fences if present
-    local cleaned_content="$ai_content"
-    if echo "$ai_content" | grep -q '^```'; then
-        cleaned_content=$(echo "$ai_content" | sed -n '/^```json\?$/,/^```$/p' | sed '1d;$d')
-        [[ -z "$cleaned_content" ]] && cleaned_content="$ai_content"
+    # Try to parse AI response as structured JSON
+    # Strategy: try raw first, then strip code fences, then extract { } block
+    local ai_details parsed_json=""
+
+    # Attempt 1: parse ai_content directly as JSON
+    if printf '%s' "$ai_content" | jq . &>/dev/null; then
+        parsed_json="$ai_content"
     fi
 
-    # Try to parse AI response as JSON for structured details
-    local ai_details
-    if echo "$cleaned_content" | jq . &>/dev/null; then
-        ai_details="$cleaned_content"
+    # Attempt 2: strip markdown code fences (permissive pattern)
+    if [[ -z "$parsed_json" ]]; then
+        local stripped
+        stripped=$(printf '%s' "$ai_content" | sed -n '/^```[jJ][sS][oO][nN]\?[[:space:]]*$/,/^```[[:space:]]*$/p' | sed '1d;$d')
+        if [[ -n "$stripped" ]] && printf '%s' "$stripped" | jq . &>/dev/null; then
+            parsed_json="$stripped"
+        fi
+    fi
+
+    # Attempt 3: extract first JSON object between outermost { }
+    if [[ -z "$parsed_json" ]]; then
+        local extracted
+        extracted=$(printf '%s' "$ai_content" | sed -n '/^[[:space:]]*{/,/^[[:space:]]*}[[:space:]]*$/p')
+        if [[ -n "$extracted" ]] && printf '%s' "$extracted" | jq . &>/dev/null; then
+            parsed_json="$extracted"
+        fi
+    fi
+
+    if [[ -n "$parsed_json" ]]; then
+        ai_details="$parsed_json"
     else
         ai_details=$(jq -nc --arg raw "$ai_content" '{raw_analysis: $raw}')
     fi
 
     # Merge citations into details if available
     if [[ -n "$ai_citations" && "$ai_citations" != "[]" && "$ai_citations" != "null" ]]; then
-        ai_details=$(echo "$ai_details" | jq --argjson citations "$ai_citations" '. + {grok_citations: $citations}')
+        ai_details=$(printf '%s' "$ai_details" | jq --argjson citations "$ai_citations" '. + {grok_citations: $citations}')
     fi
 
+    # Extract risk and summary from the parsed details (not raw content)
     local overall_risk
-    overall_risk=$(echo "$cleaned_content" | jq -r '.overall_risk // "info"' 2>/dev/null)
+    overall_risk=$(printf '%s' "$ai_details" | jq -r '.overall_risk // "info"' 2>/dev/null)
     [[ "$overall_risk" == "null" || -z "$overall_risk" ]] && overall_risk="info"
 
     local summary
-    summary=$(echo "$cleaned_content" | jq -r '.executive_summary // .summary // "AI analysis completed"' 2>/dev/null)
+    summary=$(printf '%s' "$ai_details" | jq -r '.executive_summary // .summary // .raw_analysis // "AI analysis completed"' 2>/dev/null)
     [[ "$summary" == "null" || -z "$summary" ]] && summary="AI analysis completed"
+    # Truncate long raw text summaries
+    if [[ ${#summary} -gt 500 ]]; then
+        summary="${summary:0:497}..."
+    fi
 
     emit_audit_record "AI_ANALYSIS" "xai_grok" "$keyword" "found" "$overall_risk" \
         "AI Risk Assessment: $summary" "$ai_details"
