@@ -13,6 +13,7 @@ KEYWORDS_FILE=""
 NO_AI=false
 DRY_RUN=false
 VERBOSE=false
+SILENT=false
 
 usage() {
     cat <<EOF
@@ -27,6 +28,7 @@ Options:
   --no-ai              Skip xAI/Grok analysis
   --dry-run            Load config and keywords but don't call APIs
   --verbose            Enable verbose (DEBUG) logging
+  --silent, -s         Suppress all output (for cron jobs)
   -h, --help           Show this help message
 
 Examples:
@@ -34,6 +36,7 @@ Examples:
   bash look4gold.sh --dry-run              # Validate config without API calls
   bash look4gold.sh --no-ai --verbose      # Skip AI, show debug output
   bash look4gold.sh --output-dir /tmp/out  # Custom output location
+  bash look4gold.sh --silent               # Cron-friendly, no stdout/stderr
 EOF
     exit 0
 }
@@ -47,6 +50,7 @@ while [[ $# -gt 0 ]]; do
         --no-ai)        NO_AI=true; shift ;;
         --dry-run)      DRY_RUN=true; shift ;;
         --verbose)      VERBOSE=true; shift ;;
+        --silent|-s)    SILENT=true; shift ;;
         -h|--help)      usage ;;
         *)              echo "Unknown option: $1" >&2; usage ;;
     esac
@@ -67,12 +71,15 @@ check_deps || exit 1
 # Override config dir if specified (common.sh uses CONFIG_DIR)
 export CONFIG_DIR
 
-if [[ "$VERBOSE" == "true" ]]; then
+load_config || exit 1
+
+# Apply log level overrides AFTER load_config (which sets level from settings.conf)
+if [[ "$SILENT" == "true" ]]; then
+    _CURRENT_LOG_LEVEL=3  # ERROR only
+elif [[ "$VERBOSE" == "true" ]]; then
     LOG_LEVEL="DEBUG"
     _CURRENT_LOG_LEVEL=0
 fi
-
-load_config || exit 1
 
 # Set keywords file if specified
 if [[ -n "$KEYWORDS_FILE" ]]; then
@@ -103,11 +110,13 @@ log_info "Keywords: ${#KEYWORDS[@]}"
 log_info "Dry run: $DRY_RUN"
 [[ "$NO_AI" == "true" ]] && log_info "AI analysis: disabled"
 
+# --- Check API quotas ---
+if [[ "$DRY_RUN" == "false" ]]; then
+    check_api_quotas "$NO_AI" || exit 1
+fi
+
 # --- Run scan ---
 start_scan_record "${#KEYWORDS[@]}"
-
-# Collect all findings for AI analysis
-ALL_FINDINGS=""
 
 for keyword in "${KEYWORDS[@]}"; do
     log_info "--- Scanning keyword: '$keyword' ---"
@@ -115,21 +124,22 @@ for keyword in "${KEYWORDS[@]}"; do
     brave_search "$keyword" || true
     nist_search "$keyword" || true
     otx_search "$keyword" || true
-done
 
-# --- AI analysis ---
-if [[ "$NO_AI" == "false" && "$DRY_RUN" == "false" && -f "$AUDIT_OUTPUT_FILE" ]]; then
-    # Collect finding records (exclude SCAN_START/SCAN_END and errors)
-    ALL_FINDINGS=$(jq -sc '[.[] | select(.outcome == "found")]' "$AUDIT_OUTPUT_FILE" 2>/dev/null || echo "[]")
+    # Per-keyword AI analysis
+    if [[ "$NO_AI" == "false" && "$DRY_RUN" == "false" && -f "$AUDIT_OUTPUT_FILE" ]]; then
+        keyword_findings=$(jq -sc --arg kw "$keyword" \
+            '[.[] | select(.keyword == $kw and .outcome == "found")]' \
+            "$AUDIT_OUTPUT_FILE" 2>/dev/null || echo "[]")
 
-    finding_count=$(echo "$ALL_FINDINGS" | jq 'length' 2>/dev/null || echo "0")
-    if [[ "$finding_count" -gt 0 ]]; then
-        log_info "Sending $finding_count finding(s) to xAI for analysis..."
-        xai_analyze "$ALL_FINDINGS" || true
-    else
-        log_info "No findings to analyze with AI"
+        kw_finding_count=$(echo "$keyword_findings" | jq 'length' 2>/dev/null || echo "0")
+        if [[ "$kw_finding_count" -gt 0 ]]; then
+            log_info "Sending $kw_finding_count finding(s) for '$keyword' to xAI for analysis..."
+            xai_analyze "$keyword" "$keyword_findings" || true
+        else
+            log_info "No findings for '$keyword' to analyze with AI"
+        fi
     fi
-fi
+done
 
 # --- Finish ---
 end_scan_record
@@ -142,20 +152,22 @@ if [[ "$DRY_RUN" == "false" && -f "$AUDIT_OUTPUT_FILE" ]]; then
     HTML_REPORT=$(generate_html "$AUDIT_OUTPUT_FILE") || true
 fi
 
-# --- Print summary ---
-echo
-echo "========================================="
-echo "  Look4Gold13 — Scan Complete"
-echo "========================================="
-echo "  Scan ID:    $_SCAN_ID"
-echo "  Keywords:   ${#KEYWORDS[@]}"
-echo "  Records:    $_RECORD_COUNT"
-echo "  Findings:   $_FINDING_COUNT"
-echo "  JSONL:      $AUDIT_OUTPUT_FILE"
-[[ -n "$CSV_REPORT" ]]  && echo "  CSV:        $CSV_REPORT"
-[[ -n "$HTML_REPORT" ]] && echo "  HTML:       $HTML_REPORT"
-echo "========================================="
+# --- Print summary (suppressed in silent mode) ---
+if [[ "$SILENT" != "true" ]]; then
+    echo
+    echo "========================================="
+    echo "  Look4Gold13 — Scan Complete"
+    echo "========================================="
+    echo "  Scan ID:    $_SCAN_ID"
+    echo "  Keywords:   ${#KEYWORDS[@]}"
+    echo "  Records:    $_RECORD_COUNT"
+    echo "  Findings:   $_FINDING_COUNT"
+    echo "  JSONL:      $AUDIT_OUTPUT_FILE"
+    [[ -n "$CSV_REPORT" ]]  && echo "  CSV:        $CSV_REPORT"
+    [[ -n "$HTML_REPORT" ]] && echo "  HTML:       $HTML_REPORT"
+    echo "========================================="
 
-if [[ "$DRY_RUN" == "true" ]]; then
-    echo "  (Dry run — no API calls were made)"
+    if [[ "$DRY_RUN" == "true" ]]; then
+        echo "  (Dry run — no API calls were made)"
+    fi
 fi

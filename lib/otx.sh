@@ -48,8 +48,9 @@ otx_search() {
 
     log_info "OTX: $pulse_count pulse(s) for '$keyword'"
 
-    local i name description tags indicator_count
+    local i pulse_id name description tags indicator_count
     for (( i=0; i<pulse_count; i++ )); do
+        pulse_id=$(echo "$body" | jq -r ".results[$i].id // \"\"" 2>/dev/null)
         name=$(echo "$body" | jq -r ".results[$i].name // \"\"" 2>/dev/null)
         description=$(echo "$body" | jq -r ".results[$i].description // \"\"" 2>/dev/null)
         tags=$(echo "$body" | jq -c ".results[$i].tags // []" 2>/dev/null)
@@ -71,11 +72,12 @@ otx_search() {
 
         local details
         details=$(jq -nc \
+            --arg id "$pulse_id" \
             --arg n "$name" \
             --arg d "$description" \
             --argjson t "$tags" \
             --argjson ic "$indicator_count" \
-            '{pulse_name: $n, pulse_description: $d, tags: $t, indicator_count: $ic}')
+            '{pulse_id: $id, pulse_name: $n, pulse_description: $d, tags: $t, indicator_count: $ic}')
 
         emit_audit_record "CHECK_THREAT" "otx" "$keyword" "found" "$severity" \
             "Threat intel pulse: $name ($indicator_count indicators)" "$details"

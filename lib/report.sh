@@ -47,26 +47,12 @@ generate_html() {
     finding_count=$(jq -r 'select(.event_type=="SCAN_END") | .details.total_findings' "$jsonl_file" 2>/dev/null | head -1)
     record_count=$(jq -r 'select(.event_type=="SCAN_END") | .details.total_records' "$jsonl_file" 2>/dev/null | head -1)
 
-    # Get ordered list of unique keywords (preserving scan order, excluding meta)
+    # Get ordered list of unique keywords (preserving scan order, excluding meta/AI records)
     local keywords_json
     keywords_json=$(jq -s '
-        [.[] | select(.event_type != "SCAN_START" and .event_type != "SCAN_END" and .keyword != "aggregate")
+        [.[] | select(.event_type != "SCAN_START" and .event_type != "SCAN_END" and .event_type != "AI_ANALYSIS")
          | .keyword] | unique
     ' "$jsonl_file" 2>/dev/null)
-
-    # Extract AI analysis (aggregate record from xai_grok)
-    local ai_summary ai_risk ai_available="false"
-    ai_summary=$(jq -r '
-        select(.event_type=="AI_ANALYSIS" and .source=="xai_grok" and .outcome=="found")
-        | .details.summary // .details.raw_analysis // .description
-    ' "$jsonl_file" 2>/dev/null | head -1)
-    ai_risk=$(jq -r '
-        select(.event_type=="AI_ANALYSIS" and .source=="xai_grok" and .outcome=="found")
-        | .details.overall_risk // "info"
-    ' "$jsonl_file" 2>/dev/null | head -1)
-    if [[ -n "$ai_summary" && "$ai_summary" != "null" ]]; then
-        ai_available="true"
-    fi
 
     # Build the HTML — using a heredoc for the static shell, then jq for dynamic parts
     cat > "$html_file" <<'HTMLHEAD'
@@ -112,6 +98,33 @@ generate_html() {
   .finding .desc { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
   .finding .sev { float: right; margin-left: 0.5rem; }
   .no-results { color: var(--muted); font-style: italic; font-size: 0.9rem; }
+  .ai-section { margin-top: 1rem; }
+  .ai-section h4 { font-size: 0.9rem; color: var(--accent); margin-bottom: 0.5rem;
+                    border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+  .ai-detail { color: var(--muted); font-size: 0.875rem; line-height: 1.7; margin-bottom: 1rem;
+               white-space: pre-wrap; }
+  .ai-finding-card { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+                     padding: 1rem; margin-bottom: 0.75rem; }
+  .ai-finding-card .title { font-weight: 600; font-size: 0.9rem; margin-bottom: 0.4rem; }
+  .ai-finding-card .desc { color: var(--muted); font-size: 0.85rem; margin-bottom: 0.5rem; }
+  .ai-finding-card .meta-row { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.3rem; }
+  .ai-finding-card .meta-row strong { color: var(--text); }
+  .ai-remediation { margin-top: 0.5rem; }
+  .ai-remediation summary { cursor: pointer; font-size: 0.85rem; color: var(--accent); font-weight: 500; }
+  .ai-remediation ul { margin: 0.3rem 0 0 1.2rem; font-size: 0.8rem; color: var(--muted); }
+  .ai-remediation li { margin-bottom: 0.2rem; }
+  .ai-pattern { background: var(--bg); border-left: 3px solid var(--yellow); padding: 0.75rem 1rem;
+                margin-bottom: 0.5rem; border-radius: 0 4px 4px 0; }
+  .ai-pattern .pattern-title { font-weight: 600; font-size: 0.85rem; margin-bottom: 0.3rem; }
+  .ai-pattern .pattern-desc { color: var(--muted); font-size: 0.8rem; }
+  .ai-sources { list-style: none; padding: 0; }
+  .ai-sources li { font-size: 0.8rem; color: var(--muted); padding: 0.15rem 0; }
+  .ai-sources a { color: var(--accent); text-decoration: none; word-break: break-all; }
+  .ai-sources a:hover { text-decoration: underline; }
+  .threat-indicators { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.3rem; }
+  .threat-ind { font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 3px;
+                background: var(--border); color: var(--muted); }
+  .threat-ind.active { background: var(--red); color: #000; font-weight: 600; }
   footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border);
            color: var(--muted); font-size: 0.8rem; text-align: center; }
 </style>
@@ -135,33 +148,6 @@ HTMLHEAD
 </header>
 HTMLHDR
 
-    # AI analysis box
-    if [[ "$ai_available" == "true" ]]; then
-        local risk_class="info"
-        case "$ai_risk" in
-            critical) risk_class="critical" ;;
-            high)     risk_class="high" ;;
-            medium)   risk_class="medium" ;;
-            low)      risk_class="low" ;;
-        esac
-        # Escape HTML in ai_summary
-        local safe_summary
-        safe_summary=$(echo "$ai_summary" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
-        cat >> "$html_file" <<HTMLAI
-<div class="ai-box">
-  <h3>xAI Risk Assessment <span class="badge badge-${risk_class}">${ai_risk}</span></h3>
-  <p>${safe_summary}</p>
-</div>
-HTMLAI
-    else
-        cat >> "$html_file" <<'HTMLNOAI'
-<div class="ai-box">
-  <h3>xAI Risk Assessment</h3>
-  <p>AI analysis not available</p>
-</div>
-HTMLNOAI
-    fi
-
     # Per-keyword sections
     local keyword_list
     keyword_list=$(echo "$keywords_json" | jq -r '.[]' 2>/dev/null)
@@ -174,6 +160,9 @@ HTMLNOAI
 
         echo "<div class=\"keyword-section\">" >> "$html_file"
         echo "  <h2>${safe_kw}</h2>" >> "$html_file"
+
+        # AI analysis for this keyword (shown first)
+        _html_ai_section "$jsonl_file" "$html_file" "$kw"
 
         # Source: Brave Search
         _html_source_section "$jsonl_file" "$html_file" "$kw" "brave_search" "Brave Search"
@@ -242,7 +231,13 @@ _html_source_section() {
                 extra_desc=$(echo "$rec" | jq -r '.details.cve_description // ""')
                 ;;
             otx)
-                link_url=""
+                local pulse_id
+                pulse_id=$(echo "$rec" | jq -r '.details.pulse_id // ""')
+                if [[ -n "$pulse_id" ]]; then
+                    link_url="https://otx.alienvault.com/pulse/${pulse_id}"
+                else
+                    link_url=""
+                fi
                 link_text=$(echo "$rec" | jq -r '.details.pulse_name // .description // ""')
                 extra_desc=$(echo "$rec" | jq -r '.details.pulse_description // ""')
                 ;;
@@ -281,4 +276,204 @@ _html_source_section() {
     done <<< "$findings"
 
     echo "  </div>" >> "$html_file"
+}
+
+# Internal helper: write AI analysis subsection for a keyword
+_html_ai_section() {
+    local jsonl_file="$1" html_file="$2" keyword="$3"
+
+    # Extract AI analysis record for this keyword
+    local ai_record
+    ai_record=$(jq -c --arg kw "$keyword" '
+        select(.event_type=="AI_ANALYSIS" and .source=="xai_grok" and .keyword==$kw and .outcome=="found")
+    ' "$jsonl_file" 2>/dev/null | head -1)
+
+    if [[ -z "$ai_record" ]]; then
+        return 0
+    fi
+
+    local ai_summary ai_risk ai_detailed ai_findings_json ai_patterns_json ai_sources_json
+    ai_summary=$(echo "$ai_record" | jq -r '.details.executive_summary // .details.summary // .details.raw_analysis // .description' 2>/dev/null)
+    ai_risk=$(echo "$ai_record" | jq -r '.details.overall_risk // "info"' 2>/dev/null)
+    ai_detailed=$(echo "$ai_record" | jq -r '.details.detailed_assessment // ""' 2>/dev/null)
+    ai_findings_json=$(echo "$ai_record" | jq -c '.details.prioritized_findings // []' 2>/dev/null)
+    ai_patterns_json=$(echo "$ai_record" | jq -c '.details.pattern_analysis // []' 2>/dev/null)
+    ai_sources_json=$(echo "$ai_record" | jq -c '.details.research_sources // []' 2>/dev/null)
+
+    if [[ -z "$ai_summary" || "$ai_summary" == "null" ]]; then
+        return 0
+    fi
+
+    local risk_class="info"
+    case "$ai_risk" in
+        critical) risk_class="critical" ;;
+        high)     risk_class="high" ;;
+        medium)   risk_class="medium" ;;
+        low)      risk_class="low" ;;
+    esac
+
+    local safe_summary safe_detailed
+    safe_summary=$(echo "$ai_summary" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+    safe_detailed=$(echo "$ai_detailed" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+
+    cat >> "$html_file" <<HTMLAI
+  <div class="ai-box">
+    <h3>xAI Risk Assessment <span class="badge badge-${risk_class}">${ai_risk}</span></h3>
+    <p>${safe_summary}</p>
+HTMLAI
+
+    # Detailed assessment
+    if [[ -n "$safe_detailed" && "$safe_detailed" != "null" ]]; then
+        cat >> "$html_file" <<HTMLDETAIL
+    <div class="ai-section">
+      <h4>Detailed Assessment</h4>
+      <div class="ai-detail">${safe_detailed}</div>
+    </div>
+HTMLDETAIL
+    fi
+
+    # Pattern analysis
+    if [[ -n "$ai_patterns_json" && "$ai_patterns_json" != "[]" && "$ai_patterns_json" != "null" ]]; then
+        echo '    <div class="ai-section">' >> "$html_file"
+        echo '      <h4>Pattern Analysis</h4>' >> "$html_file"
+        local pattern_count pi=0
+        pattern_count=$(echo "$ai_patterns_json" | jq 'length' 2>/dev/null || echo "0")
+        while [[ $pi -lt $pattern_count ]]; do
+            local p_title p_risk
+            p_title=$(echo "$ai_patterns_json" | jq -r ".[$pi].pattern // \"\"" 2>/dev/null | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+            p_risk=$(echo "$ai_patterns_json" | jq -r ".[$pi].compound_risk // \"\"" 2>/dev/null | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+            cat >> "$html_file" <<HTMLPAT
+      <div class="ai-pattern">
+        <div class="pattern-title">${p_title}</div>
+        <div class="pattern-desc">${p_risk}</div>
+      </div>
+HTMLPAT
+            pi=$((pi + 1))
+        done
+        echo '    </div>' >> "$html_file"
+    fi
+
+    # Prioritized findings
+    if [[ -n "$ai_findings_json" && "$ai_findings_json" != "[]" && "$ai_findings_json" != "null" ]]; then
+        echo '    <div class="ai-section">' >> "$html_file"
+        echo '      <h4>Prioritized Findings</h4>' >> "$html_file"
+        local fc fi_idx=0
+        fc=$(echo "$ai_findings_json" | jq 'length' 2>/dev/null || echo "0")
+        while [[ $fi_idx -lt $fc ]]; do
+            local f_risk f_title f_desc f_justification f_cat
+            f_risk=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].risk_level // \"info\"" 2>/dev/null)
+            f_title=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].title // \"Finding\"" 2>/dev/null | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+            f_desc=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].detailed_description // .[$fi_idx].description // \"\"" 2>/dev/null | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+            f_justification=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].risk_justification // \"\"" 2>/dev/null | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+            f_cat=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].category // \"\"" 2>/dev/null | sed 's/_/ /g')
+
+            local f_risk_class="info"
+            case "$f_risk" in
+                critical) f_risk_class="critical" ;;
+                high)     f_risk_class="high" ;;
+                medium)   f_risk_class="medium" ;;
+                low)      f_risk_class="low" ;;
+            esac
+
+            cat >> "$html_file" <<HTMLFINDING
+      <div class="ai-finding-card">
+        <div class="title"><span class="badge badge-${f_risk_class}">${f_risk}</span> ${f_title}</div>
+        <div class="desc">${f_desc}</div>
+HTMLFINDING
+
+            if [[ -n "$f_justification" ]]; then
+                echo "        <div class=\"meta-row\"><strong>Risk Justification:</strong> ${f_justification}</div>" >> "$html_file"
+            fi
+            if [[ -n "$f_cat" ]]; then
+                echo "        <div class=\"meta-row\"><strong>Category:</strong> ${f_cat}</div>" >> "$html_file"
+            fi
+
+            local f_systems
+            f_systems=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].affected_systems // [] | join(\", \")" 2>/dev/null | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+            if [[ -n "$f_systems" ]]; then
+                echo "        <div class=\"meta-row\"><strong>Affected Systems:</strong> ${f_systems}</div>" >> "$html_file"
+            fi
+
+            # Threat context indicators
+            local t_active t_exploit t_kev t_notes
+            t_active=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].threat_context.active_exploitation // false" 2>/dev/null)
+            t_exploit=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].threat_context.exploit_available // false" 2>/dev/null)
+            t_kev=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].threat_context.cisa_kev // false" 2>/dev/null)
+            t_notes=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].threat_context.notes // \"\"" 2>/dev/null | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+
+            echo '        <div class="threat-indicators">' >> "$html_file"
+            [[ "$t_active" == "true" ]] && echo '          <span class="threat-ind active">ACTIVELY EXPLOITED</span>' >> "$html_file"
+            [[ "$t_exploit" == "true" ]] && echo '          <span class="threat-ind active">EXPLOIT AVAILABLE</span>' >> "$html_file"
+            [[ "$t_kev" == "true" ]] && echo '          <span class="threat-ind active">CISA KEV</span>' >> "$html_file"
+            echo '        </div>' >> "$html_file"
+            if [[ -n "$t_notes" ]]; then
+                echo "        <div class=\"meta-row\"><strong>Threat Context:</strong> ${t_notes}</div>" >> "$html_file"
+            fi
+
+            # Remediation (collapsible)
+            local rem_immediate rem_short rem_long
+            rem_immediate=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].remediation.immediate // [] | .[]" 2>/dev/null)
+            rem_short=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].remediation.short_term // [] | .[]" 2>/dev/null)
+            rem_long=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].remediation.long_term // [] | .[]" 2>/dev/null)
+
+            if [[ -n "$rem_immediate" || -n "$rem_short" || -n "$rem_long" ]]; then
+                echo '        <details class="ai-remediation">' >> "$html_file"
+                echo '          <summary>Remediation Steps</summary>' >> "$html_file"
+                if [[ -n "$rem_immediate" ]]; then
+                    echo '          <strong style="font-size:0.8rem;color:var(--red)">Immediate (24-72h):</strong><ul>' >> "$html_file"
+                    while IFS= read -r item; do
+                        local safe_item
+                        safe_item=$(echo "$item" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+                        echo "            <li>${safe_item}</li>" >> "$html_file"
+                    done <<< "$rem_immediate"
+                    echo '          </ul>' >> "$html_file"
+                fi
+                if [[ -n "$rem_short" ]]; then
+                    echo '          <strong style="font-size:0.8rem;color:var(--orange)">Short-term (1-2 weeks):</strong><ul>' >> "$html_file"
+                    while IFS= read -r item; do
+                        local safe_item
+                        safe_item=$(echo "$item" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+                        echo "            <li>${safe_item}</li>" >> "$html_file"
+                    done <<< "$rem_short"
+                    echo '          </ul>' >> "$html_file"
+                fi
+                if [[ -n "$rem_long" ]]; then
+                    echo '          <strong style="font-size:0.8rem;color:var(--accent)">Long-term:</strong><ul>' >> "$html_file"
+                    while IFS= read -r item; do
+                        local safe_item
+                        safe_item=$(echo "$item" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+                        echo "            <li>${safe_item}</li>" >> "$html_file"
+                    done <<< "$rem_long"
+                    echo '          </ul>' >> "$html_file"
+                fi
+                echo '        </details>' >> "$html_file"
+            fi
+
+            echo '      </div>' >> "$html_file"
+            fi_idx=$((fi_idx + 1))
+        done
+        echo '    </div>' >> "$html_file"
+    fi
+
+    # Research sources
+    if [[ -n "$ai_sources_json" && "$ai_sources_json" != "[]" && "$ai_sources_json" != "null" ]]; then
+        echo '    <div class="ai-section">' >> "$html_file"
+        echo '      <h4>Research Sources</h4>' >> "$html_file"
+        echo '      <ul class="ai-sources">' >> "$html_file"
+        echo "$ai_sources_json" | jq -r '.[]' 2>/dev/null | while IFS= read -r src; do
+            local safe_src
+            safe_src=$(echo "$src" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+            if echo "$src" | grep -q '^https\?://'; then
+                local safe_href
+                safe_href=$(echo "$src" | sed 's/&/\&amp;/g')
+                echo "        <li><a href=\"${safe_href}\" target=\"_blank\" rel=\"noopener\">${safe_src}</a></li>" >> "$html_file"
+            else
+                echo "        <li>${safe_src}</li>" >> "$html_file"
+            fi
+        done
+        echo '      </ul>' >> "$html_file"
+        echo '    </div>' >> "$html_file"
+    fi
+
+    echo '  </div>' >> "$html_file"
 }
