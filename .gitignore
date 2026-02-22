@@ -1,0 +1,11 @@
+# User-specific config (contains API keys and custom keywords)
+.config/apis.conf
+.config/keywords.conf
+
+# Scan output
+output/*.jsonl
+
+# Editor swap files
+*.swp
+*.swo
+*~
