@@ -3,7 +3,8 @@
 # Uses the /v1/responses endpoint with web_search and x_search tools
 
 xai_analyze() {
-    local findings_json="$1"
+    local keyword="$1"
+    local findings_json="$2"
 
     if [[ -z "${XAI_API_KEY:-}" ]]; then
         log_warn "XAI_API_KEY not set, skipping AI analysis"
@@ -11,7 +12,7 @@ xai_analyze() {
     fi
 
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "[DRY RUN] Would call xAI API for analysis"
+        log_info "[DRY RUN] Would call xAI API for analysis of '$keyword'"
         return 0
     fi
 
@@ -25,7 +26,7 @@ xai_analyze() {
 
     local tools_desc
     tools_desc=$(echo "$tools_json" | jq -r '[.[].type] | join("+")' 2>/dev/null)
-    log_info "xAI: sending findings for deep analysis (model: $model, tools: ${tools_desc:-none})"
+    log_info "xAI: analyzing keyword '$keyword' (model: $model, tools: ${tools_desc:-none})"
 
     local system_prompt
     system_prompt='You are an expert cybersecurity analyst and threat intelligence specialist with deep expertise in NIST SP 800-53 AU-13 (Monitoring for Information Disclosure). You have been tasked with performing a thorough, in-depth risk assessment of organizational information disclosure findings.
@@ -102,9 +103,11 @@ Respond ONLY in JSON format (no markdown fences) with this structure:
 }'
 
     local user_message
-    user_message="Perform a comprehensive AU-13 information disclosure risk assessment on the following findings. Use your web search capability to research, verify, and expand on each finding. Do not merely summarize the data provided — investigate deeply, cross-reference across sources, and provide actionable intelligence with specific remediation guidance.
+    user_message="Perform a comprehensive AU-13 information disclosure risk assessment for the keyword/asset: \"${keyword}\".
 
-Findings data:
+Use your web search capability to research, verify, and expand on each finding. Do not merely summarize the data provided — investigate deeply, cross-reference across sources, and provide actionable intelligence with specific remediation guidance.
+
+Findings data for \"${keyword}\":
 
 $findings_json"
 
@@ -124,12 +127,12 @@ $findings_json"
         }')
 
     local response http_code body
-    response=$(curl -s -w "\n%{http_code}" \
+    response=$(echo "$request_body" | curl -s -w "\n%{http_code}" \
         -X POST \
         --max-time "${XAI_TIMEOUT:-300}" \
         -H "Content-Type: application/json" \
         -H "Authorization: Bearer $XAI_API_KEY" \
-        -d "$request_body" \
+        -d @- \
         "https://api.x.ai/v1/responses" \
         2>/dev/null)
 
@@ -138,34 +141,42 @@ $findings_json"
 
     if [[ "$http_code" -ne 200 ]]; then
         log_error "xAI API returned HTTP $http_code"
-        emit_audit_record "AI_ANALYSIS" "xai_grok" "aggregate" "error" "info" \
+        emit_audit_record "AI_ANALYSIS" "xai_grok" "$keyword" "error" "info" \
             "xAI API error: HTTP $http_code" \
             "$(jq -nc --arg code "$http_code" '{http_code: $code}')"
         return 1
     fi
 
     # Extract content from the Responses API format
+    # Note: xAI /v1/responses uses content type "output_text" (not "text")
     local ai_content
     ai_content=$(echo "$body" | jq -r '
-        [.output[] | select(.type == "message") | .content[] | select(.type == "text") | .text]
+        [.output[] | select(.type == "message") | .content[] | select(.type == "output_text") | .text]
         | first // ""
     ' 2>/dev/null)
 
-    # Fallback extraction path
+    # Fallback: grab first text from any message output regardless of content type
     if [[ -z "$ai_content" ]]; then
-        ai_content=$(echo "$body" | jq -r '.output_text // ""' 2>/dev/null)
+        ai_content=$(echo "$body" | jq -r '
+            [.output[] | select(.type == "message") | .content[]? | .text // empty]
+            | first // ""
+        ' 2>/dev/null)
     fi
 
     if [[ -z "$ai_content" ]]; then
         log_warn "xAI: empty response"
-        emit_audit_record "AI_ANALYSIS" "xai_grok" "aggregate" "error" "info" \
+        emit_audit_record "AI_ANALYSIS" "xai_grok" "$keyword" "error" "info" \
             "xAI returned empty analysis" "null"
         return 1
     fi
 
-    # Extract citations from Grok's web searches
+    # Extract citations from Grok's web search annotations
     local ai_citations
-    ai_citations=$(echo "$body" | jq -c '.citations // []' 2>/dev/null)
+    ai_citations=$(echo "$body" | jq -c '
+        [.output[] | select(.type == "message") | .content[]?
+         | .annotations[]? | select(.type == "url_citation") | .url]
+        // []
+    ' 2>/dev/null)
 
     # Strip markdown code fences if present
     local cleaned_content="$ai_content"
@@ -195,8 +206,8 @@ $findings_json"
     summary=$(echo "$cleaned_content" | jq -r '.executive_summary // .summary // "AI analysis completed"' 2>/dev/null)
     [[ "$summary" == "null" || -z "$summary" ]] && summary="AI analysis completed"
 
-    emit_audit_record "AI_ANALYSIS" "xai_grok" "aggregate" "found" "$overall_risk" \
+    emit_audit_record "AI_ANALYSIS" "xai_grok" "$keyword" "found" "$overall_risk" \
         "AI Risk Assessment: $summary" "$ai_details"
 
-    log_info "xAI analysis complete — overall risk: $overall_risk"
+    log_info "xAI analysis complete for '$keyword' — overall risk: $overall_risk"
 }

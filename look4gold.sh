@@ -118,30 +118,28 @@ fi
 # --- Run scan ---
 start_scan_record "${#KEYWORDS[@]}"
 
-# Collect all findings for AI analysis
-ALL_FINDINGS=""
-
 for keyword in "${KEYWORDS[@]}"; do
     log_info "--- Scanning keyword: '$keyword' ---"
 
     brave_search "$keyword" || true
     nist_search "$keyword" || true
     otx_search "$keyword" || true
-done
 
-# --- AI analysis ---
-if [[ "$NO_AI" == "false" && "$DRY_RUN" == "false" && -f "$AUDIT_OUTPUT_FILE" ]]; then
-    # Collect finding records (exclude SCAN_START/SCAN_END and errors)
-    ALL_FINDINGS=$(jq -sc '[.[] | select(.outcome == "found")]' "$AUDIT_OUTPUT_FILE" 2>/dev/null || echo "[]")
+    # Per-keyword AI analysis
+    if [[ "$NO_AI" == "false" && "$DRY_RUN" == "false" && -f "$AUDIT_OUTPUT_FILE" ]]; then
+        keyword_findings=$(jq -sc --arg kw "$keyword" \
+            '[.[] | select(.keyword == $kw and .outcome == "found")]' \
+            "$AUDIT_OUTPUT_FILE" 2>/dev/null || echo "[]")
 
-    finding_count=$(echo "$ALL_FINDINGS" | jq 'length' 2>/dev/null || echo "0")
-    if [[ "$finding_count" -gt 0 ]]; then
-        log_info "Sending $finding_count finding(s) to xAI for analysis..."
-        xai_analyze "$ALL_FINDINGS" || true
-    else
-        log_info "No findings to analyze with AI"
+        kw_finding_count=$(echo "$keyword_findings" | jq 'length' 2>/dev/null || echo "0")
+        if [[ "$kw_finding_count" -gt 0 ]]; then
+            log_info "Sending $kw_finding_count finding(s) for '$keyword' to xAI for analysis..."
+            xai_analyze "$keyword" "$keyword_findings" || true
+        else
+            log_info "No findings for '$keyword' to analyze with AI"
+        fi
     fi
-fi
+done
 
 # --- Finish ---
 end_scan_record
