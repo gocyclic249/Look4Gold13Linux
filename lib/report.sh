@@ -161,6 +161,9 @@ HTMLHDR
         echo "<div class=\"keyword-section\">" >> "$html_file"
         echo "  <h2>${safe_kw}</h2>" >> "$html_file"
 
+        # AI analysis for this keyword (shown first)
+        _html_ai_section "$jsonl_file" "$html_file" "$kw"
+
         # Source: Brave Search
         _html_source_section "$jsonl_file" "$html_file" "$kw" "brave_search" "Brave Search"
 
@@ -169,9 +172,6 @@ HTMLHDR
 
         # Source: OTX
         _html_source_section "$jsonl_file" "$html_file" "$kw" "otx" "AlienVault OTX"
-
-        # AI analysis for this keyword
-        _html_ai_section "$jsonl_file" "$html_file" "$kw"
 
         echo "</div>" >> "$html_file"
     done <<< "$keyword_list"
@@ -231,7 +231,13 @@ _html_source_section() {
                 extra_desc=$(echo "$rec" | jq -r '.details.cve_description // ""')
                 ;;
             otx)
-                link_url=""
+                local pulse_id
+                pulse_id=$(echo "$rec" | jq -r '.details.pulse_id // ""')
+                if [[ -n "$pulse_id" ]]; then
+                    link_url="https://otx.alienvault.com/pulse/${pulse_id}"
+                else
+                    link_url=""
+                fi
                 link_text=$(echo "$rec" | jq -r '.details.pulse_name // .description // ""')
                 extra_desc=$(echo "$rec" | jq -r '.details.pulse_description // ""')
                 ;;
