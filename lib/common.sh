@@ -107,3 +107,106 @@ url_encode() {
     # Pure bash/jq URL encoding to avoid curl warnings
     printf '%s' "$string" | jq -sRr @uri
 }
+
+# Check API key validity and report remaining quotas before scanning
+check_api_quotas() {
+    local no_ai="${1:-false}"
+    local ready=0 total=0
+
+    log_info "Checking API status..."
+
+    # --- Brave Search ---
+    if [[ -n "${BRAVE_API_KEY:-}" ]]; then
+        total=$((total + 1))
+        local brave_resp brave_code brave_headers
+        brave_resp=$(curl -sI -w "\n%{http_code}" \
+            -H "Accept: application/json" \
+            -H "X-Subscription-Token: $BRAVE_API_KEY" \
+            "https://api.search.brave.com/res/v1/web/search?q=test&count=1" \
+            2>/dev/null)
+        brave_code=$(echo "$brave_resp" | tail -n1)
+        brave_headers=$(echo "$brave_resp" | sed '$d')
+
+        if [[ "$brave_code" == "200" || "$brave_code" == "429" ]]; then
+            local remaining limit
+            remaining=$(echo "$brave_headers" | grep -i '^x-ratelimit-remaining:' | head -1 | sed 's/.*: *//' | tr -d '\r' | cut -d',' -f2 | tr -d ' ')
+            limit=$(echo "$brave_headers" | grep -i '^x-ratelimit-limit:' | head -1 | sed 's/.*: *//' | tr -d '\r' | cut -d',' -f2 | tr -d ' ')
+            if [[ -n "$remaining" && -n "$limit" ]]; then
+                log_info "Brave Search: ${remaining}/${limit} monthly requests remaining"
+                if [[ "$remaining" == "0" ]]; then
+                    log_warn "Brave Search: monthly quota exhausted"
+                else
+                    ready=$((ready + 1))
+                fi
+            else
+                log_info "Brave Search: API key valid"
+                ready=$((ready + 1))
+            fi
+        elif [[ "$brave_code" == "401" || "$brave_code" == "403" ]]; then
+            log_error "Brave Search: invalid API key (HTTP $brave_code)"
+        else
+            log_warn "Brave Search: unexpected HTTP $brave_code"
+        fi
+    fi
+
+    # --- NIST NVD ---
+    if [[ -n "${NIST_API_KEY:-}" ]]; then
+        total=$((total + 1))
+        local nist_code
+        nist_code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "apiKey: $NIST_API_KEY" \
+            "https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=1&keywordSearch=test" \
+            2>/dev/null)
+        if [[ "$nist_code" == "200" ]]; then
+            log_info "NIST NVD: API key valid (50 req/30s rate limit)"
+            ready=$((ready + 1))
+        elif [[ "$nist_code" == "401" || "$nist_code" == "403" ]]; then
+            log_error "NIST NVD: invalid API key (HTTP $nist_code)"
+        else
+            log_warn "NIST NVD: unexpected HTTP $nist_code"
+        fi
+    fi
+
+    # --- AlienVault OTX ---
+    if [[ -n "${OTX_API_KEY:-}" ]]; then
+        total=$((total + 1))
+        local otx_code
+        otx_code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "X-OTX-API-KEY: $OTX_API_KEY" \
+            "https://otx.alienvault.com/api/v1/users/me" \
+            2>/dev/null)
+        if [[ "$otx_code" == "200" ]]; then
+            log_info "AlienVault OTX: API key valid"
+            ready=$((ready + 1))
+        elif [[ "$otx_code" == "401" || "$otx_code" == "403" ]]; then
+            log_error "AlienVault OTX: invalid API key (HTTP $otx_code)"
+        else
+            log_warn "AlienVault OTX: unexpected HTTP $otx_code"
+        fi
+    fi
+
+    # --- xAI ---
+    if [[ -n "${XAI_API_KEY:-}" && "$no_ai" != "true" ]]; then
+        total=$((total + 1))
+        local xai_code
+        xai_code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $XAI_API_KEY" \
+            "https://api.x.ai/v1/models" \
+            2>/dev/null)
+        if [[ "$xai_code" == "200" ]]; then
+            log_info "xAI: API key valid"
+            ready=$((ready + 1))
+        elif [[ "$xai_code" == "401" || "$xai_code" == "403" ]]; then
+            log_error "xAI: invalid API key (HTTP $xai_code)"
+        else
+            log_warn "xAI: unexpected HTTP $xai_code"
+        fi
+    fi
+
+    log_info "API status: ${ready}/${total} APIs ready"
+
+    if [[ "$ready" -eq 0 && "$total" -gt 0 ]]; then
+        log_error "No APIs available — aborting scan"
+        return 1
+    fi
+}

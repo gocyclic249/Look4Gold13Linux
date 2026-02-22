@@ -13,6 +13,7 @@ KEYWORDS_FILE=""
 NO_AI=false
 DRY_RUN=false
 VERBOSE=false
+SILENT=false
 
 usage() {
     cat <<EOF
@@ -27,6 +28,7 @@ Options:
   --no-ai              Skip xAI/Grok analysis
   --dry-run            Load config and keywords but don't call APIs
   --verbose            Enable verbose (DEBUG) logging
+  --silent, -s         Suppress all output (for cron jobs)
   -h, --help           Show this help message
 
 Examples:
@@ -34,6 +36,7 @@ Examples:
   bash look4gold.sh --dry-run              # Validate config without API calls
   bash look4gold.sh --no-ai --verbose      # Skip AI, show debug output
   bash look4gold.sh --output-dir /tmp/out  # Custom output location
+  bash look4gold.sh --silent               # Cron-friendly, no stdout/stderr
 EOF
     exit 0
 }
@@ -47,6 +50,7 @@ while [[ $# -gt 0 ]]; do
         --no-ai)        NO_AI=true; shift ;;
         --dry-run)      DRY_RUN=true; shift ;;
         --verbose)      VERBOSE=true; shift ;;
+        --silent|-s)    SILENT=true; shift ;;
         -h|--help)      usage ;;
         *)              echo "Unknown option: $1" >&2; usage ;;
     esac
@@ -67,7 +71,10 @@ check_deps || exit 1
 # Override config dir if specified (common.sh uses CONFIG_DIR)
 export CONFIG_DIR
 
-if [[ "$VERBOSE" == "true" ]]; then
+# Silent mode: suppress all log output except errors
+if [[ "$SILENT" == "true" ]]; then
+    _CURRENT_LOG_LEVEL=3  # ERROR only
+elif [[ "$VERBOSE" == "true" ]]; then
     LOG_LEVEL="DEBUG"
     _CURRENT_LOG_LEVEL=0
 fi
@@ -102,6 +109,11 @@ log_info "Output: $AUDIT_OUTPUT_FILE"
 log_info "Keywords: ${#KEYWORDS[@]}"
 log_info "Dry run: $DRY_RUN"
 [[ "$NO_AI" == "true" ]] && log_info "AI analysis: disabled"
+
+# --- Check API quotas ---
+if [[ "$DRY_RUN" == "false" ]]; then
+    check_api_quotas "$NO_AI" || exit 1
+fi
 
 # --- Run scan ---
 start_scan_record "${#KEYWORDS[@]}"
@@ -142,20 +154,22 @@ if [[ "$DRY_RUN" == "false" && -f "$AUDIT_OUTPUT_FILE" ]]; then
     HTML_REPORT=$(generate_html "$AUDIT_OUTPUT_FILE") || true
 fi
 
-# --- Print summary ---
-echo
-echo "========================================="
-echo "  Look4Gold13 — Scan Complete"
-echo "========================================="
-echo "  Scan ID:    $_SCAN_ID"
-echo "  Keywords:   ${#KEYWORDS[@]}"
-echo "  Records:    $_RECORD_COUNT"
-echo "  Findings:   $_FINDING_COUNT"
-echo "  JSONL:      $AUDIT_OUTPUT_FILE"
-[[ -n "$CSV_REPORT" ]]  && echo "  CSV:        $CSV_REPORT"
-[[ -n "$HTML_REPORT" ]] && echo "  HTML:       $HTML_REPORT"
-echo "========================================="
+# --- Print summary (suppressed in silent mode) ---
+if [[ "$SILENT" != "true" ]]; then
+    echo
+    echo "========================================="
+    echo "  Look4Gold13 — Scan Complete"
+    echo "========================================="
+    echo "  Scan ID:    $_SCAN_ID"
+    echo "  Keywords:   ${#KEYWORDS[@]}"
+    echo "  Records:    $_RECORD_COUNT"
+    echo "  Findings:   $_FINDING_COUNT"
+    echo "  JSONL:      $AUDIT_OUTPUT_FILE"
+    [[ -n "$CSV_REPORT" ]]  && echo "  CSV:        $CSV_REPORT"
+    [[ -n "$HTML_REPORT" ]] && echo "  HTML:       $HTML_REPORT"
+    echo "========================================="
 
-if [[ "$DRY_RUN" == "true" ]]; then
-    echo "  (Dry run — no API calls were made)"
+    if [[ "$DRY_RUN" == "true" ]]; then
+        echo "  (Dry run — no API calls were made)"
+    fi
 fi

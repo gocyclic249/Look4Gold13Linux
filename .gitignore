@@ -11,3 +11,6 @@ output/*.html
 *.swp
 *.swo
 *~
+
+.vscode/*
+.claude/*
