@@ -4,6 +4,8 @@
 
 # Scan output
 output/*.jsonl
+output/*.csv
+output/*.html
 
 # Editor swap files
 *.swp

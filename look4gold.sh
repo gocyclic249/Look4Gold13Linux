@@ -59,6 +59,7 @@ source "$SCRIPT_DIR/lib/brave.sh"
 source "$SCRIPT_DIR/lib/nist.sh"
 source "$SCRIPT_DIR/lib/otx.sh"
 source "$SCRIPT_DIR/lib/xai.sh"
+source "$SCRIPT_DIR/lib/report.sh"
 
 # --- Initialize ---
 check_deps || exit 1
@@ -133,6 +134,14 @@ fi
 # --- Finish ---
 end_scan_record
 
+# --- Generate reports ---
+CSV_REPORT=""
+HTML_REPORT=""
+if [[ "$DRY_RUN" == "false" && -f "$AUDIT_OUTPUT_FILE" ]]; then
+    CSV_REPORT=$(generate_csv "$AUDIT_OUTPUT_FILE") || true
+    HTML_REPORT=$(generate_html "$AUDIT_OUTPUT_FILE") || true
+fi
+
 # --- Print summary ---
 echo
 echo "========================================="
@@ -142,7 +151,9 @@ echo "  Scan ID:    $_SCAN_ID"
 echo "  Keywords:   ${#KEYWORDS[@]}"
 echo "  Records:    $_RECORD_COUNT"
 echo "  Findings:   $_FINDING_COUNT"
-echo "  Output:     $AUDIT_OUTPUT_FILE"
+echo "  JSONL:      $AUDIT_OUTPUT_FILE"
+[[ -n "$CSV_REPORT" ]]  && echo "  CSV:        $CSV_REPORT"
+[[ -n "$HTML_REPORT" ]] && echo "  HTML:       $HTML_REPORT"
 echo "========================================="
 
 if [[ "$DRY_RUN" == "true" ]]; then
