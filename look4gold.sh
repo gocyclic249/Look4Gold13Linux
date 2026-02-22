@@ -71,15 +71,15 @@ check_deps || exit 1
 # Override config dir if specified (common.sh uses CONFIG_DIR)
 export CONFIG_DIR
 
-# Silent mode: suppress all log output except errors
+load_config || exit 1
+
+# Apply log level overrides AFTER load_config (which sets level from settings.conf)
 if [[ "$SILENT" == "true" ]]; then
     _CURRENT_LOG_LEVEL=3  # ERROR only
 elif [[ "$VERBOSE" == "true" ]]; then
     LOG_LEVEL="DEBUG"
     _CURRENT_LOG_LEVEL=0
 fi
-
-load_config || exit 1
 
 # Set keywords file if specified
 if [[ -n "$KEYWORDS_FILE" ]]; then

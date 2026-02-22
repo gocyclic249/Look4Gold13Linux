@@ -116,21 +116,23 @@ check_api_quotas() {
     log_info "Checking API status..."
 
     # --- Brave Search ---
+    # Uses a GET request (Brave API does not support HEAD)
+    # Dumps headers via -D to read rate limit info
     if [[ -n "${BRAVE_API_KEY:-}" ]]; then
         total=$((total + 1))
-        local brave_resp brave_code brave_headers
-        brave_resp=$(curl -sI -w "\n%{http_code}" \
+        local brave_hdr_file brave_code
+        brave_hdr_file=$(mktemp)
+        brave_code=$(curl -s -o /dev/null -D "$brave_hdr_file" -w "%{http_code}" \
             -H "Accept: application/json" \
+            -H "Accept-Encoding: gzip" \
             -H "X-Subscription-Token: $BRAVE_API_KEY" \
             "https://api.search.brave.com/res/v1/web/search?q=test&count=1" \
-            2>/dev/null)
-        brave_code=$(echo "$brave_resp" | tail -n1)
-        brave_headers=$(echo "$brave_resp" | sed '$d')
+            --compressed 2>/dev/null)
 
         if [[ "$brave_code" == "200" || "$brave_code" == "429" ]]; then
             local remaining limit
-            remaining=$(echo "$brave_headers" | grep -i '^x-ratelimit-remaining:' | head -1 | sed 's/.*: *//' | tr -d '\r' | cut -d',' -f2 | tr -d ' ')
-            limit=$(echo "$brave_headers" | grep -i '^x-ratelimit-limit:' | head -1 | sed 's/.*: *//' | tr -d '\r' | cut -d',' -f2 | tr -d ' ')
+            remaining=$(grep -i '^x-ratelimit-remaining:' "$brave_hdr_file" | head -1 | sed 's/.*: *//' | tr -d '\r' | cut -d',' -f2 | tr -d ' ')
+            limit=$(grep -i '^x-ratelimit-limit:' "$brave_hdr_file" | head -1 | sed 's/.*: *//' | tr -d '\r' | cut -d',' -f2 | tr -d ' ')
             if [[ -n "$remaining" && -n "$limit" ]]; then
                 log_info "Brave Search: ${remaining}/${limit} monthly requests remaining"
                 if [[ "$remaining" == "0" ]]; then
@@ -147,6 +149,7 @@ check_api_quotas() {
         else
             log_warn "Brave Search: unexpected HTTP $brave_code"
         fi
+        rm -f "$brave_hdr_file"
     fi
 
     # --- NIST NVD ---
