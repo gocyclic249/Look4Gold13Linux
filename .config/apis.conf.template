@@ -5,6 +5,9 @@
 # Brave Search API — https://brave.com/search/api/
 BRAVE_API_KEY=""
 
+# Tavily Search API — https://app.tavily.com/home
+TAVILY_API_KEY=""
+
 # NIST NVD API — https://nvd.nist.gov/developers/request-an-api-key
 NIST_API_KEY=""
 
