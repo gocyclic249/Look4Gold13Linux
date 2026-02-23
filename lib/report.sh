@@ -361,6 +361,13 @@ _html_ai_section() {
     ai_patterns_json=$(echo "$ai_record" | jq -c '.details.pattern_analysis // []' 2>/dev/null)
     ai_sources_json=$(echo "$ai_record" | jq -c '.details.research_sources // []' 2>/dev/null)
 
+    # Fall back to grok_citations when research_sources is empty
+    local sources_label="Research Sources"
+    if [[ -z "$ai_sources_json" || "$ai_sources_json" == "[]" || "$ai_sources_json" == "null" ]]; then
+        ai_sources_json=$(echo "$ai_record" | jq -c '.details.grok_citations // []' 2>/dev/null)
+        sources_label="Sources"
+    fi
+
     if [[ -z "$ai_summary" || "$ai_summary" == "null" ]]; then
         return 0
     fi
@@ -516,10 +523,10 @@ HTMLFINDING
         echo '    </div>' >> "$html_file"
     fi
 
-    # Research sources
+    # Research sources (or grok_citations fallback)
     if [[ -n "$ai_sources_json" && "$ai_sources_json" != "[]" && "$ai_sources_json" != "null" ]]; then
         echo '    <div class="ai-section">' >> "$html_file"
-        echo '      <h4>Research Sources</h4>' >> "$html_file"
+        echo "      <h4>${sources_label}</h4>" >> "$html_file"
         echo '      <ul class="ai-sources">' >> "$html_file"
         echo "$ai_sources_json" | jq -r '.[]' 2>/dev/null | while IFS= read -r src; do
             local safe_src
