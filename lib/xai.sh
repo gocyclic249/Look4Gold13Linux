@@ -220,13 +220,27 @@ $findings_json"
         fi
     fi
 
-    # Attempt 3: strip leading non-JSON text and let jq parse from first {
+    # Attempt 3: extract {...} blocks, validate each has expected schema keys
     if [[ -z "$parsed_json" ]]; then
-        local extracted
-        # Drop lines before the first {, strip any prefix on that line, then let jq parse
-        extracted=$(sed -n '/{/,$p' < "$tmp_ai_content" | sed '1s/^[^{]*//' | jq -c '.' 2>/dev/null | head -1)
-        if [[ -n "$extracted" ]]; then
-            parsed_json="$extracted"
+        local extracted_all
+        # Drop lines before the first {, strip any prefix on that line, emit all JSON objects
+        extracted_all=$(sed -n '/{/,$p' < "$tmp_ai_content" | sed '1s/^[^{]*//' | jq -c '.' 2>/dev/null)
+        while IFS= read -r candidate; do
+            [[ -z "$candidate" ]] && continue
+            local has_keys
+            has_keys=$(echo "$candidate" | jq 'has("overall_risk") or has("executive_summary") or has("prioritized_findings")' 2>/dev/null)
+            if [[ "$has_keys" == "true" ]]; then
+                parsed_json="$candidate"
+                break
+            fi
+        done <<< "$extracted_all"
+        # If no candidate had expected keys, fall back to first valid JSON object
+        if [[ -z "$parsed_json" ]]; then
+            local first_obj
+            first_obj=$(echo "$extracted_all" | head -1)
+            if [[ -n "$first_obj" ]]; then
+                parsed_json="$first_obj"
+            fi
         fi
     fi
 
