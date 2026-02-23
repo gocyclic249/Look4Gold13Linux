@@ -9,7 +9,8 @@ Searches web and threat intelligence sources for evidence of unauthorized disclo
 ## Architecture
 
 - **Bash-based** — all scripts in `lib/` are sourced by `look4gold.sh`
-- **API modules**: Brave Search (`lib/brave.sh`), NIST NVD (`lib/nist.sh`), AlienVault OTX (`lib/otx.sh`), xAI Grok (`lib/xai.sh`)
+- **API modules**: Brave Search (`lib/brave.sh`), Tavily Search (`lib/tavily.sh`), NIST NVD (`lib/nist.sh`), AlienVault OTX (`lib/otx.sh`), xAI Grok (`lib/xai.sh`)
+- **Deduplication**: Web search results from Brave and Tavily are deduplicated by URL before AI analysis
 - **Audit records**: `lib/audit.sh` formats all output as AU-3 compliant JSONL
 - **Reports**: `lib/report.sh` generates CSV and HTML reports from the JSONL output
 - **Config**: `.config/settings.conf` (tracked), `.config/apis.conf` (gitignored, secrets), `.config/keywords.conf` (gitignored, user-specific)
@@ -23,6 +24,7 @@ Searches web and threat intelligence sources for evidence of unauthorized disclo
 | `lib/common.sh` | Config loading, logging, url_encode, dep checks |
 | `lib/audit.sh` | AU-2/AU-3 record formatting (emit_audit_record, start/end_scan_record) |
 | `lib/brave.sh` | Brave Search API integration |
+| `lib/tavily.sh` | Tavily Search API integration |
 | `lib/nist.sh` | NIST NVD CVE search |
 | `lib/otx.sh` | AlienVault OTX threat intel |
 | `lib/xai.sh` | xAI Grok AI analysis of findings |
@@ -31,7 +33,7 @@ Searches web and threat intelligence sources for evidence of unauthorized disclo
 ## Dependencies
 
 - `bash` (4.0+), `curl`, `jq`
-- API keys: Brave Search, NIST NVD, AlienVault OTX, xAI (all optional individually)
+- API keys: Brave Search, Tavily Search, NIST NVD, AlienVault OTX, xAI (all optional individually; Brave and Tavily can be used independently or together)
 
 ## Running
 
