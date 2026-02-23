@@ -164,8 +164,8 @@ HTMLHDR
         # AI analysis for this keyword (shown first)
         _html_ai_section "$jsonl_file" "$html_file" "$kw"
 
-        # Source: Brave Search
-        _html_source_section "$jsonl_file" "$html_file" "$kw" "brave_search" "Brave Search"
+        # Source: Web Search (Brave + Tavily combined)
+        _html_web_search_section "$jsonl_file" "$html_file" "$kw"
 
         # Source: NIST NVD
         _html_source_section "$jsonl_file" "$html_file" "$kw" "nist_nvd" "NIST NVD"
@@ -188,6 +188,67 @@ HTMLFOOT
 
     log_info "HTML report written: $html_file"
     echo "$html_file"
+}
+
+# Internal helper: write combined Web Search (Brave + Tavily) subsection
+_html_web_search_section() {
+    local jsonl_file="$1" html_file="$2" keyword="$3"
+
+    # Get findings from both brave_search and tavily_search
+    local findings
+    findings=$(jq -c --arg kw "$keyword" '
+        select(.keyword == $kw and (.source == "brave_search" or .source == "tavily_search") and .outcome == "found")
+    ' "$jsonl_file" 2>/dev/null)
+
+    echo "  <div class=\"source-group\">" >> "$html_file"
+    echo "    <h3>Web Search</h3>" >> "$html_file"
+
+    if [[ -z "$findings" ]]; then
+        echo "    <p class=\"no-results\">No results</p>" >> "$html_file"
+        echo "  </div>" >> "$html_file"
+        return
+    fi
+
+    while IFS= read -r rec; do
+        [[ -z "$rec" ]] && continue
+
+        local sev link_url link_text extra_desc
+        sev=$(echo "$rec" | jq -r '.severity // "info"')
+        link_url=$(echo "$rec" | jq -r '.details.url // ""')
+        link_text=$(echo "$rec" | jq -r '.details.title // .description // ""')
+        extra_desc=$(echo "$rec" | jq -r '.details.description // ""')
+
+        # Escape HTML
+        link_text=$(echo "$link_text" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+        extra_desc=$(echo "$extra_desc" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+        if [[ ${#extra_desc} -gt 300 ]]; then
+            extra_desc="${extra_desc:0:300}..."
+        fi
+
+        local sev_class="info"
+        case "$sev" in
+            critical) sev_class="critical" ;;
+            high)     sev_class="high" ;;
+            medium)   sev_class="medium" ;;
+            low)      sev_class="low" ;;
+        esac
+
+        echo "    <div class=\"finding\">" >> "$html_file"
+        echo "      <span class=\"sev badge badge-${sev_class}\">${sev}</span>" >> "$html_file"
+        if [[ -n "$link_url" ]]; then
+            local safe_url
+            safe_url=$(echo "$link_url" | sed 's/&/\&amp;/g')
+            echo "      <a href=\"${safe_url}\" target=\"_blank\" rel=\"noopener\">${link_text}</a>" >> "$html_file"
+        else
+            echo "      <strong>${link_text}</strong>" >> "$html_file"
+        fi
+        if [[ -n "$extra_desc" ]]; then
+            echo "      <div class=\"desc\">${extra_desc}</div>" >> "$html_file"
+        fi
+        echo "    </div>" >> "$html_file"
+    done <<< "$findings"
+
+    echo "  </div>" >> "$html_file"
 }
 
 # Internal helper: write one source subsection into the HTML

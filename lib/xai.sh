@@ -111,11 +111,21 @@ Findings data for \"${keyword}\":
 
 $findings_json"
 
+    # Write large content to temp files to avoid "Argument list too long"
+    # (jq --arg passes data via argv which has OS limits; --rawfile reads from disk)
+    local tmp_system tmp_user
+    tmp_system=$(mktemp)
+    tmp_user=$(mktemp)
+    trap "rm -f '$tmp_system' '$tmp_user'" RETURN
+
+    printf '%s' "$system_prompt" > "$tmp_system"
+    printf '%s' "$user_message" > "$tmp_user"
+
     local request_body
     request_body=$(jq -nc \
         --arg model "$model" \
-        --arg system "$system_prompt" \
-        --arg user_msg "$user_message" \
+        --rawfile system "$tmp_system" \
+        --rawfile user_msg "$tmp_user" \
         --argjson tools "$tools_json" \
         '{
             model: $model,
@@ -126,81 +136,96 @@ $findings_json"
             tools: $tools
         }')
 
-    local response http_code body
-    response=$(echo "$request_body" | curl -s -w "\n%{http_code}" \
+    # Write response to temp file to avoid "Argument list too long" on large API responses
+    local tmp_response tmp_body
+    tmp_response=$(mktemp)
+    tmp_body=$(mktemp)
+
+    echo "$request_body" | curl -s -w "\n%{http_code}" \
         -X POST \
         --max-time "${XAI_TIMEOUT:-300}" \
         -H "Content-Type: application/json" \
         -H "Authorization: Bearer $XAI_API_KEY" \
         -d @- \
         "https://api.x.ai/v1/responses" \
-        2>/dev/null)
+        2>/dev/null > "$tmp_response"
 
-    http_code=$(echo "$response" | tail -n1)
-    body=$(echo "$response" | sed '$d')
+    local http_code
+    http_code=$(tail -n1 "$tmp_response")
+    sed '$d' "$tmp_response" > "$tmp_body"
+    rm -f "$tmp_response"
 
     if [[ "$http_code" -ne 200 ]]; then
         log_error "xAI API returned HTTP $http_code"
         emit_audit_record "AI_ANALYSIS" "xai_grok" "$keyword" "error" "info" \
             "xAI API error: HTTP $http_code" \
             "$(jq -nc --arg code "$http_code" '{http_code: $code}')"
+        rm -f "$tmp_body"
         return 1
     fi
 
     # Extract content from the Responses API format
     # Note: xAI /v1/responses uses content type "output_text" (not "text")
     local ai_content
-    ai_content=$(echo "$body" | jq -r '
+    ai_content=$(jq -r '
         [.output[] | select(.type == "message") | .content[] | select(.type == "output_text") | .text]
         | first // ""
-    ' 2>/dev/null)
+    ' < "$tmp_body" 2>/dev/null)
 
     # Fallback: grab first text from any message output regardless of content type
     if [[ -z "$ai_content" ]]; then
-        ai_content=$(echo "$body" | jq -r '
+        ai_content=$(jq -r '
             [.output[] | select(.type == "message") | .content[]? | .text // empty]
             | first // ""
-        ' 2>/dev/null)
+        ' < "$tmp_body" 2>/dev/null)
     fi
 
     if [[ -z "$ai_content" ]]; then
         log_warn "xAI: empty response"
         emit_audit_record "AI_ANALYSIS" "xai_grok" "$keyword" "error" "info" \
             "xAI returned empty analysis" "null"
+        rm -f "$tmp_body"
         return 1
     fi
 
     # Extract citations from Grok's web search annotations
     local ai_citations
-    ai_citations=$(echo "$body" | jq -c '
+    ai_citations=$(jq -c '
         [.output[] | select(.type == "message") | .content[]?
          | .annotations[]? | select(.type == "url_citation") | .url]
         // []
-    ' 2>/dev/null)
+    ' < "$tmp_body" 2>/dev/null)
+    rm -f "$tmp_body"
+
+    # Write ai_content to temp file to avoid "Argument list too long" on large responses
+    local tmp_ai_content
+    tmp_ai_content=$(mktemp)
+    printf '%s' "$ai_content" > "$tmp_ai_content"
 
     # Try to parse AI response as structured JSON
     # Strategy: try raw first, then strip code fences, then extract { } block
     local ai_details parsed_json=""
 
     # Attempt 1: parse ai_content directly as JSON
-    if printf '%s' "$ai_content" | jq . &>/dev/null; then
+    if jq . < "$tmp_ai_content" &>/dev/null; then
         parsed_json="$ai_content"
     fi
 
     # Attempt 2: strip markdown code fences (permissive pattern)
     if [[ -z "$parsed_json" ]]; then
         local stripped
-        stripped=$(printf '%s' "$ai_content" | sed -n '/^```[jJ][sS][oO][nN]\?[[:space:]]*$/,/^```[[:space:]]*$/p' | sed '1d;$d')
+        stripped=$(sed -n '/^```[jJ][sS][oO][nN]\?[[:space:]]*$/,/^```[[:space:]]*$/p' < "$tmp_ai_content" | sed '1d;$d')
         if [[ -n "$stripped" ]] && printf '%s' "$stripped" | jq . &>/dev/null; then
             parsed_json="$stripped"
         fi
     fi
 
-    # Attempt 3: extract first JSON object between outermost { }
+    # Attempt 3: strip leading non-JSON text and let jq parse from first {
     if [[ -z "$parsed_json" ]]; then
         local extracted
-        extracted=$(printf '%s' "$ai_content" | sed -n '/^[[:space:]]*{/,/^[[:space:]]*}[[:space:]]*$/p')
-        if [[ -n "$extracted" ]] && printf '%s' "$extracted" | jq . &>/dev/null; then
+        # Drop lines before the first {, strip any prefix on that line, then let jq parse
+        extracted=$(sed -n '/{/,$p' < "$tmp_ai_content" | sed '1s/^[^{]*//' | jq -c '.' 2>/dev/null | head -1)
+        if [[ -n "$extracted" ]]; then
             parsed_json="$extracted"
         fi
     fi
@@ -208,22 +233,30 @@ $findings_json"
     if [[ -n "$parsed_json" ]]; then
         ai_details="$parsed_json"
     else
-        ai_details=$(jq -nc --arg raw "$ai_content" '{raw_analysis: $raw}')
+        ai_details=$(jq -Rnsc '{raw_analysis: .}' < "$tmp_ai_content")
     fi
+    rm -f "$tmp_ai_content"
+
+    # Write ai_details to temp file for subsequent jq operations
+    local tmp_ai_details
+    tmp_ai_details=$(mktemp)
+    printf '%s' "$ai_details" > "$tmp_ai_details"
 
     # Merge citations into details if available
     if [[ -n "$ai_citations" && "$ai_citations" != "[]" && "$ai_citations" != "null" ]]; then
-        ai_details=$(printf '%s' "$ai_details" | jq --argjson citations "$ai_citations" '. + {grok_citations: $citations}')
+        ai_details=$(jq --argjson citations "$ai_citations" '. + {grok_citations: $citations}' < "$tmp_ai_details")
+        printf '%s' "$ai_details" > "$tmp_ai_details"
     fi
 
     # Extract risk and summary from the parsed details (not raw content)
     local overall_risk
-    overall_risk=$(printf '%s' "$ai_details" | jq -r '.overall_risk // "info"' 2>/dev/null)
+    overall_risk=$(jq -r '.overall_risk // "info"' < "$tmp_ai_details" 2>/dev/null)
     [[ "$overall_risk" == "null" || -z "$overall_risk" ]] && overall_risk="info"
 
     local summary
-    summary=$(printf '%s' "$ai_details" | jq -r '.executive_summary // .summary // .raw_analysis // "AI analysis completed"' 2>/dev/null)
+    summary=$(jq -r '.executive_summary // .summary // .raw_analysis // "AI analysis completed"' < "$tmp_ai_details" 2>/dev/null)
     [[ "$summary" == "null" || -z "$summary" ]] && summary="AI analysis completed"
+    rm -f "$tmp_ai_details"
     # Truncate long raw text summaries
     if [[ ${#summary} -gt 500 ]]; then
         summary="${summary:0:497}..."
