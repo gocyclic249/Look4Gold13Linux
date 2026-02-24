@@ -60,6 +60,8 @@ _brave_query() {
     local keyword="$1"
     local query="$2"
     local dork_label="$3"
+    local event_type="${4:-SEARCH_WEB}"
+    local source_name="${5:-brave_search}"
 
     local encoded_query
     encoded_query="$(url_encode "$query")"
@@ -87,7 +89,7 @@ _brave_query() {
 
     if [[ "$http_code" -ne 200 ]]; then
         log_error "Brave Search API returned HTTP $http_code for '$keyword' (dork: $dork_label)"
-        emit_audit_record "SEARCH_WEB" "brave_search" "$keyword" "error" "info" \
+        emit_audit_record "$event_type" "$source_name" "$keyword" "error" "info" \
             "Brave Search API error: HTTP $http_code (dork: $dork_label)" \
             "$(jq -nc --arg code "$http_code" --arg dork "$dork_label" '{http_code: $code, dork_group: $dork}')"
         return 1
@@ -118,7 +120,7 @@ _brave_query() {
             --argjson idx "$i" \
             '{title: $t, url: $u, description: $d, dork_group: $dork, result_index: $idx}')
 
-        emit_audit_record "SEARCH_WEB" "brave_search" "$keyword" "found" "low" \
+        emit_audit_record "$event_type" "$source_name" "$keyword" "found" "low" \
             "Web result: $title" "$details"
     done
 }

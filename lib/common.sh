@@ -70,8 +70,8 @@ load_config() {
             break
         fi
     done
-    # 4chan archives require no API key — count as a valid source
-    if [[ "${FOURCHAN_ENABLED:-false}" == "true" ]]; then
+    # 4chan archives now use web search dorks — require Brave or Tavily API key
+    if [[ "${FOURCHAN_ENABLED:-false}" == "true" ]] && [[ -n "${BRAVE_API_KEY:-}" || -n "${TAVILY_API_KEY:-}" ]]; then
         has_source=true
     fi
     if [[ "$has_source" == "false" ]]; then
@@ -231,38 +231,12 @@ check_api_quotas() {
         fi
     fi
 
-    # --- 4chan Archives (no API key) ---
-    if [[ "${FOURCHAN_ENABLED:-false}" == "true" && -n "${FOURCHAN_BOARDS:-}" ]]; then
-        local IFS=','
-        local _fc_entries=($FOURCHAN_BOARDS)
-        unset IFS
-        local fc_reachable=0 fc_total=0
-        for _fc_entry in "${_fc_entries[@]}"; do
-            _fc_entry="$(echo "$_fc_entry" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-            [[ -z "$_fc_entry" ]] && continue
-            local _fc_board="${_fc_entry%%:*}"
-            local _fc_base="${_fc_entry#*:}"
-            [[ -z "$_fc_board" || -z "$_fc_base" ]] && continue
-            fc_total=$((fc_total + 1))
-            local _fc_code
-            _fc_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
-                -H "User-Agent: Look4Gold13/1.0 (AU-13 OSINT Monitor)" \
-                "${_fc_base}/_/api/chan/search/?text=test&boards=${_fc_board}&page=1" \
-                2>/dev/null)
-            if [[ "$_fc_code" == "200" ]]; then
-                log_info "4chan archive: /${_fc_board}/ on ${_fc_base} reachable"
-                fc_reachable=$((fc_reachable + 1))
-            else
-                log_warn "4chan archive: /${_fc_board}/ on ${_fc_base} returned HTTP $_fc_code (may be Cloudflare-blocked)"
-            fi
-        done
-        if [[ "$fc_reachable" -gt 0 ]]; then
-            total=$((total + 1))
-            ready=$((ready + 1))
-            log_info "4chan archives: ${fc_reachable}/${fc_total} boards reachable"
-        elif [[ "$fc_total" -gt 0 ]]; then
-            total=$((total + 1))
-            log_warn "4chan archives: no boards reachable (0/${fc_total})"
+    # --- 4chan Archives (via web search dorks) ---
+    if [[ "${FOURCHAN_ENABLED:-false}" == "true" ]]; then
+        if [[ -n "${TAVILY_API_KEY:-}" || -n "${BRAVE_API_KEY:-}" ]]; then
+            log_info "4chan archives: enabled (via web search dorks)"
+        else
+            log_warn "4chan archives: enabled but no web search API available"
         fi
     fi
 

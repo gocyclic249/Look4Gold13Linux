@@ -178,8 +178,8 @@ HTMLHDR
         # Source: OTX
         _html_source_section "$jsonl_file" "$html_file" "$kw" "otx" "AlienVault OTX"
 
-        # Source: 4chan Archives
-        _html_fourchan_section "$jsonl_file" "$html_file" "$kw"
+        # Source: 4chan Archives (via web search dorks)
+        _html_source_section "$jsonl_file" "$html_file" "$kw" "fourchan_dork" "4chan Archives"
 
         echo "</div>" >> "$html_file"
     done <<< "$keyword_list"
@@ -321,6 +321,11 @@ _html_source_section() {
                 link_text=$(echo "$rec" | jq -r '.details.pulse_name // .description // ""')
                 extra_desc=$(echo "$rec" | jq -r '.details.pulse_description // ""')
                 ;;
+            fourchan_dork)
+                link_url=$(echo "$rec" | jq -r '.details.url // ""')
+                link_text=$(echo "$rec" | jq -r '.details.title // .description // ""')
+                extra_desc=$(echo "$rec" | jq -r '.details.description // ""')
+                ;;
         esac
 
         # Escape HTML
@@ -351,80 +356,6 @@ _html_source_section() {
         fi
         if [[ -n "$extra_desc" ]]; then
             echo "      <div class=\"desc\">${extra_desc}</div>" >> "$html_file"
-        fi
-        echo "    </div>" >> "$html_file"
-    done <<< "$findings"
-
-    echo "    </details>" >> "$html_file"
-    echo "  </div>" >> "$html_file"
-}
-
-# Internal helper: write 4chan Archives subsection
-_html_fourchan_section() {
-    local jsonl_file="$1" html_file="$2" keyword="$3"
-
-    local findings
-    findings=$(jq -c --arg kw "$keyword" '
-        select(.keyword == $kw and .source == "fourchan_archive" and .outcome == "found")
-    ' "$jsonl_file" 2>/dev/null)
-
-    echo "  <div class=\"source-group\">" >> "$html_file"
-
-    if [[ -z "$findings" ]]; then
-        echo "    <h3>4chan Archives</h3>" >> "$html_file"
-        echo "    <p class=\"no-results\">No results</p>" >> "$html_file"
-        echo "  </div>" >> "$html_file"
-        return
-    fi
-
-    local result_count
-    result_count=$(echo "$findings" | wc -l)
-    echo "    <details>" >> "$html_file"
-    echo "      <summary>4chan Archives <span class=\"count\">(${result_count} results)</span></summary>" >> "$html_file"
-
-    while IFS= read -r rec; do
-        [[ -z "$rec" ]] && continue
-
-        local sev board post_url thread_title comment_snippet poster_name
-        sev=$(echo "$rec" | jq -r '.severity // "info"')
-        board=$(echo "$rec" | jq -r '.details.board // ""')
-        post_url=$(echo "$rec" | jq -r '.details.url // ""')
-        thread_title=$(echo "$rec" | jq -r '.details.thread_title // ""')
-        comment_snippet=$(echo "$rec" | jq -r '.details.comment_snippet // ""')
-        poster_name=$(echo "$rec" | jq -r '.details.poster_name // "Anonymous"')
-
-        # Escape HTML
-        thread_title=$(echo "$thread_title" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
-        comment_snippet=$(echo "$comment_snippet" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
-        poster_name=$(echo "$poster_name" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
-        if [[ ${#comment_snippet} -gt 300 ]]; then
-            comment_snippet="${comment_snippet:0:300}..."
-        fi
-
-        local link_text="/${board}/"
-        if [[ -n "$thread_title" ]]; then
-            link_text="/${board}/ — ${thread_title}"
-        fi
-
-        local sev_class="info"
-        case "$sev" in
-            critical) sev_class="critical" ;;
-            high)     sev_class="high" ;;
-            medium)   sev_class="medium" ;;
-            low)      sev_class="low" ;;
-        esac
-
-        echo "    <div class=\"finding\">" >> "$html_file"
-        echo "      <span class=\"sev badge badge-${sev_class}\">${sev}</span>" >> "$html_file"
-        if [[ -n "$post_url" ]]; then
-            local safe_url
-            safe_url=$(echo "$post_url" | sed 's/&/\&amp;/g')
-            echo "      <a href=\"${safe_url}\" target=\"_blank\" rel=\"noopener\">${link_text}</a>" >> "$html_file"
-        else
-            echo "      <strong>${link_text}</strong>" >> "$html_file"
-        fi
-        if [[ -n "$comment_snippet" ]]; then
-            echo "      <div class=\"desc\">${poster_name}: ${comment_snippet}</div>" >> "$html_file"
         fi
         echo "    </div>" >> "$html_file"
     done <<< "$findings"

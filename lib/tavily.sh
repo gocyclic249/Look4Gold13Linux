@@ -44,6 +44,8 @@ _tavily_query() {
     local keyword="$1"
     local query="$2"
     local dork_label="$3"
+    local event_type="${4:-SEARCH_WEB}"
+    local source_name="${5:-tavily_search}"
 
     local count="${SEARCH_RESULT_COUNT:-10}"
     local days_back="${SEARCH_DAYS_BACK:-7}"
@@ -93,7 +95,7 @@ _tavily_query() {
 
     if [[ "$http_code" -ne 200 ]]; then
         log_error "Tavily Search API returned HTTP $http_code for '$keyword' (dork: $dork_label)"
-        emit_audit_record "SEARCH_WEB" "tavily_search" "$keyword" "error" "info" \
+        emit_audit_record "$event_type" "$source_name" "$keyword" "error" "info" \
             "Tavily Search API error: HTTP $http_code (dork: $dork_label)" \
             "$(jq -nc --arg code "$http_code" --arg dork "$dork_label" '{http_code: $code, dork_group: $dork}')"
         return 1
@@ -126,7 +128,7 @@ _tavily_query() {
             --argjson sc "$score" \
             '{title: $t, url: $u, description: $d, dork_group: $dork, result_index: $idx, relevance_score: $sc}')
 
-        emit_audit_record "SEARCH_WEB" "tavily_search" "$keyword" "found" "low" \
+        emit_audit_record "$event_type" "$source_name" "$keyword" "found" "low" \
             "Web result: $title" "$details"
     done
 }
