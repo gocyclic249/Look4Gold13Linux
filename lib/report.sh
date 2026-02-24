@@ -372,7 +372,9 @@ _html_ai_section() {
 
     local ai_summary ai_risk ai_detailed ai_findings_json ai_patterns_json ai_sources_json
     ai_summary=$(echo "$ai_record" | jq -r '.details.executive_summary // .details.summary // .details.raw_analysis // .description' 2>/dev/null)
-    ai_risk=$(echo "$ai_record" | jq -r '.details.overall_risk // "info"' 2>/dev/null)
+    ai_risk=$(echo "$ai_record" | jq -r '.details.overall_risk // "low"' 2>/dev/null)
+    # Normalize "info" to "low" for display
+    [[ "$ai_risk" == "info" || "$ai_risk" == "null" || -z "$ai_risk" ]] && ai_risk="low"
     ai_detailed=$(echo "$ai_record" | jq -r '.details.detailed_assessment // ""' 2>/dev/null)
     ai_findings_json=$(echo "$ai_record" | jq -c '.details.prioritized_findings // []' 2>/dev/null)
     ai_patterns_json=$(echo "$ai_record" | jq -c '.details.pattern_analysis // []' 2>/dev/null)
@@ -389,7 +391,7 @@ _html_ai_section() {
         return 0
     fi
 
-    local risk_class="info"
+    local risk_class="low"
     case "$ai_risk" in
         critical) risk_class="critical" ;;
         high)     risk_class="high" ;;

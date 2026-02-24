@@ -241,7 +241,7 @@ $findings_json"
     if [[ -n "$parsed_json" ]]; then
         ai_details="$parsed_json"
     else
-        ai_details=$(jq -Rnsc '{raw_analysis: .}' < "$tmp_ai_content")
+        ai_details=$(jq -Rsc '{raw_analysis: .}' < "$tmp_ai_content")
     fi
     rm -f "$tmp_ai_content"
 
@@ -258,8 +258,10 @@ $findings_json"
 
     # Extract risk and summary from the parsed details (not raw content)
     local overall_risk
-    overall_risk=$(jq -r '.overall_risk // "info"' < "$tmp_ai_details" 2>/dev/null)
-    [[ "$overall_risk" == "null" || -z "$overall_risk" ]] && overall_risk="info"
+    overall_risk=$(jq -r '.overall_risk // "low"' < "$tmp_ai_details" 2>/dev/null)
+    [[ "$overall_risk" == "null" || -z "$overall_risk" ]] && overall_risk="low"
+    # Remap "info" to "low" — AU-13 findings always represent some disclosure risk
+    [[ "$overall_risk" == "info" ]] && overall_risk="low"
 
     local summary
     summary=$(jq -r '.executive_summary // .summary // .raw_analysis // "AI analysis completed"' < "$tmp_ai_details" 2>/dev/null)
