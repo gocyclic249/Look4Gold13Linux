@@ -166,6 +166,7 @@ check_api_quotas() {
         local brave_hdr_file brave_code
         brave_hdr_file=$(mktemp)
         brave_code=$(curl -s -o /dev/null -D "$brave_hdr_file" -w "%{http_code}" \
+            --max-time 15 --max-redirs 5 \
             -H "Accept: application/json" \
             -H "Accept-Encoding: gzip" \
             -H "X-Subscription-Token: $BRAVE_API_KEY" \
@@ -200,6 +201,7 @@ check_api_quotas() {
         total=$((total + 1))
         local tavily_code
         tavily_code=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 15 --max-redirs 5 \
             -X POST \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $TAVILY_API_KEY" \
@@ -221,6 +223,7 @@ check_api_quotas() {
         total=$((total + 1))
         local nist_code
         nist_code=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 15 --max-redirs 5 \
             -H "apiKey: $NIST_API_KEY" \
             "https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=1&keywordSearch=test" \
             2>/dev/null)
@@ -239,6 +242,7 @@ check_api_quotas() {
         total=$((total + 1))
         local otx_code
         otx_code=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 15 --max-redirs 5 \
             -H "X-OTX-API-KEY: $OTX_API_KEY" \
             "https://otx.alienvault.com/api/v1/users/me" \
             2>/dev/null)
@@ -257,6 +261,7 @@ check_api_quotas() {
         total=$((total + 1))
         local xai_code
         xai_code=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 15 --max-redirs 5 \
             -H "Authorization: Bearer $XAI_API_KEY" \
             "https://api.x.ai/v1/models" \
             2>/dev/null)

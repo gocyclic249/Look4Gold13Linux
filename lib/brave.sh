@@ -60,6 +60,7 @@ _brave_query() {
 
     local response http_code body
     response=$(curl -s -w "\n%{http_code}" \
+        --max-time 30 --max-redirs 5 \
         -H "Accept: application/json" \
         -H "Accept-Encoding: gzip" \
         -H "X-Subscription-Token: $BRAVE_API_KEY" \

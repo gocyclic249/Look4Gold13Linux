@@ -81,7 +81,7 @@ _tavily_query() {
     local response http_code body
     response=$(echo "$request_body" | curl -s -w "\n%{http_code}" \
         -X POST \
-        --max-time 30 \
+        --max-time 30 --max-redirs 5 \
         -H "Content-Type: application/json" \
         -H "Authorization: Bearer $TAVILY_API_KEY" \
         -d @- \
