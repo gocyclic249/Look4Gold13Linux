@@ -220,12 +220,14 @@ $findings_json"
         fi
     fi
 
-    # Attempt 3: extract {...} blocks, validate each has expected schema keys
+    # Attempt 3: try parsing JSON from each { line as a starting position
+    # The AI response may have prose -> small JSON fragment -> prose -> real analysis JSON.
+    # jq stops at non-JSON text between objects, so we must try multiple start positions.
     if [[ -z "$parsed_json" ]]; then
-        local extracted_all
-        # Drop lines before the first {, strip any prefix on that line, emit all JSON objects
-        extracted_all=$(sed -n '/{/,$p' < "$tmp_ai_content" | sed '1s/^[^{]*//' | jq -c '.' 2>/dev/null)
-        while IFS= read -r candidate; do
+        while IFS= read -r line_num; do
+            [[ -z "$line_num" ]] && continue
+            local candidate
+            candidate=$(sed -n "${line_num},\$p" < "$tmp_ai_content" | sed '1s/^[^{]*//' | jq -c '.' 2>/dev/null | head -1)
             [[ -z "$candidate" ]] && continue
             local has_keys
             has_keys=$(echo "$candidate" | jq 'has("overall_risk") or has("executive_summary") or has("prioritized_findings")' 2>/dev/null)
@@ -233,15 +235,7 @@ $findings_json"
                 parsed_json="$candidate"
                 break
             fi
-        done <<< "$extracted_all"
-        # If no candidate had expected keys, fall back to first valid JSON object
-        if [[ -z "$parsed_json" ]]; then
-            local first_obj
-            first_obj=$(echo "$extracted_all" | head -1)
-            if [[ -n "$first_obj" ]]; then
-                parsed_json="$first_obj"
-            fi
-        fi
+        done < <(grep -n '{' "$tmp_ai_content" | cut -d: -f1)
     fi
 
     if [[ -n "$parsed_json" ]]; then
