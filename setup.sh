@@ -108,39 +108,71 @@ else
 fi
 echo
 
+# --- Dorks file ---
+dorks_file="$CONFIG_DIR/dorks.conf"
+if [[ ! -f "$dorks_file" ]]; then
+    cp "$CONFIG_DIR/dorks.conf.template" "$dorks_file"
+    echo "Created $dorks_file from template."
+    echo "  -> Edit this file to customize search dorks for your threat profile."
+else
+    echo "Dorks file already exists: $dorks_file"
+fi
+echo
+
 # --- Validate API keys ---
 echo "Validating API keys..."
-validate_api() {
-    local name="$1"
-    local key="$2"
-    local test_cmd="$3"
 
-    if [[ -z "$key" ]]; then
-        echo "  [SKIP] $name — no key provided"
-        return 0
-    fi
+if [[ -z "$BRAVE_API_KEY" ]]; then
+    echo "  [SKIP] Brave Search — no key provided"
+elif curl -sf --max-time 15 --max-redirs 3 \
+    -H "X-Subscription-Token: $BRAVE_API_KEY" \
+    "https://api.search.brave.com/res/v1/web/search?q=test&count=1" &>/dev/null; then
+    echo "  [OK]   Brave Search"
+else
+    echo "  [FAIL] Brave Search — key may be invalid (check manually)"
+fi
 
-    if eval "$test_cmd" &>/dev/null; then
-        echo "  [OK]   $name"
-    else
-        echo "  [FAIL] $name — key may be invalid (check manually)"
-    fi
-}
+if [[ -z "$TAVILY_API_KEY" ]]; then
+    echo "  [SKIP] Tavily Search — no key provided"
+elif curl -sf --max-time 15 --max-redirs 3 \
+    -X POST -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $TAVILY_API_KEY" \
+    -d '{"query":"test","max_results":1}' \
+    "https://api.tavily.com/search" &>/dev/null; then
+    echo "  [OK]   Tavily Search"
+else
+    echo "  [FAIL] Tavily Search — key may be invalid (check manually)"
+fi
 
-validate_api "Brave Search" "$BRAVE_API_KEY" \
-    "curl -sf -H 'X-Subscription-Token: $BRAVE_API_KEY' 'https://api.search.brave.com/res/v1/web/search?q=test&count=1'"
+if [[ -z "$NIST_API_KEY" ]]; then
+    echo "  [SKIP] NIST NVD — no key provided"
+elif curl -sf --max-time 15 --max-redirs 3 \
+    -H "apiKey: $NIST_API_KEY" \
+    "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=test&resultsPerPage=1" &>/dev/null; then
+    echo "  [OK]   NIST NVD"
+else
+    echo "  [FAIL] NIST NVD — key may be invalid (check manually)"
+fi
 
-validate_api "Tavily Search" "$TAVILY_API_KEY" \
-    "curl -sf -X POST -H 'Content-Type: application/json' -H 'Authorization: Bearer $TAVILY_API_KEY' -d '{\"query\":\"test\",\"max_results\":1}' 'https://api.tavily.com/search'"
+if [[ -z "$OTX_API_KEY" ]]; then
+    echo "  [SKIP] AlienVault OTX — no key provided"
+elif curl -sf --max-time 15 --max-redirs 3 \
+    -H "X-OTX-API-KEY: $OTX_API_KEY" \
+    "https://otx.alienvault.com/api/v1/user/me" &>/dev/null; then
+    echo "  [OK]   AlienVault OTX"
+else
+    echo "  [FAIL] AlienVault OTX — key may be invalid (check manually)"
+fi
 
-validate_api "NIST NVD" "$NIST_API_KEY" \
-    "curl -sf -H 'apiKey: $NIST_API_KEY' 'https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=test&resultsPerPage=1'"
-
-validate_api "AlienVault OTX" "$OTX_API_KEY" \
-    "curl -sf -H 'X-OTX-API-KEY: $OTX_API_KEY' 'https://otx.alienvault.com/api/v1/user/me'"
-
-validate_api "xAI (Grok)" "$XAI_API_KEY" \
-    "curl -sf -H 'Authorization: Bearer $XAI_API_KEY' 'https://api.x.ai/v1/models'"
+if [[ -z "$XAI_API_KEY" ]]; then
+    echo "  [SKIP] xAI (Grok) — no key provided"
+elif curl -sf --max-time 15 --max-redirs 3 \
+    -H "Authorization: Bearer $XAI_API_KEY" \
+    "https://api.x.ai/v1/models" &>/dev/null; then
+    echo "  [OK]   xAI (Grok)"
+else
+    echo "  [FAIL] xAI (Grok) — key may be invalid (check manually)"
+fi
 
 echo
 

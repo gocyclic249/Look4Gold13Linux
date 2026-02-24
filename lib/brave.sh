@@ -1,24 +1,6 @@
 #!/usr/bin/env bash
 # lib/brave.sh — Brave Search API module with security-focused dork queries
-
-# Disclosure dork groups — sites where leaked content commonly appears
-# Each group is a batch of OR'd site: operators to minimize API calls
-_DISCLOSURE_DORK_GROUPS=(
-    "site:pastebin.com OR site:github.com OR site:gist.github.com OR site:reddit.com"
-    "site:dropbox.com/s/ OR site:docs.google.com OR site:archive.org OR site:paste.ee"
-    "site:ghostbin.com OR site:dpaste.org OR site:rentry.co OR site:justpaste.it"
-    "site:controlc.com OR site:privatebin.net OR site:0bin.net OR site:hastebin.com OR site:ideone.com"
-    "github code exposed repository"
-)
-
-# Breach/threat dork groups — security news and intel sources
-_BREACH_DORK_GROUPS=(
-    "breach data leak compromised"
-    "ransomware attack security incident"
-    "credential stolen dark web"
-    "site:haveibeenpwned.com OR site:databreaches.net OR site:bleepingcomputer.com OR site:krebsonsecurity.com"
-    "breachforums breach leaked database"
-)
+# Dork groups are loaded from .config/dorks.conf by load_dorks() in common.sh.
 
 brave_search() {
     local keyword="$1"
@@ -78,6 +60,7 @@ _brave_query() {
 
     local response http_code body
     response=$(curl -s -w "\n%{http_code}" \
+        --max-time 30 --max-redirs 5 \
         -H "Accept: application/json" \
         -H "Accept-Encoding: gzip" \
         -H "X-Subscription-Token: $BRAVE_API_KEY" \

@@ -1,6 +1,36 @@
 #!/usr/bin/env bash
 # lib/report.sh — CSV and HTML report generation from JSONL audit records
 
+# HTML entity escaping — all 5 critical entities (prevents XSS in generated reports)
+# Note: \& in replacement strings produces a literal & (bash treats bare & as matched text)
+_html_escape() {
+    local text="$1"
+    text="${text//&/\&amp;}"
+    text="${text//</\&lt;}"
+    text="${text//>/\&gt;}"
+    text="${text//\"/\&quot;}"
+    text="${text//\'/\&#39;}"
+    printf '%s' "$text"
+}
+
+# URL sanitization — blocks dangerous schemes, escapes for safe href attribute insertion
+_sanitize_url() {
+    local url="$1"
+    # Strip leading whitespace
+    url="${url#"${url%%[![:space:]]*}"}"
+    # Block dangerous URL schemes (case-insensitive check)
+    local lower_url
+    lower_url="${url,,}"
+    case "$lower_url" in
+        javascript:*|data:*|vbscript:*) printf ''; return ;;
+    esac
+    # Only allow http, https, ftp, and relative URLs
+    if [[ -n "$url" && "$lower_url" != http://* && "$lower_url" != https://* && "$lower_url" != ftp://* && "$lower_url" != /* ]]; then
+        printf ''; return
+    fi
+    _html_escape "$url"
+}
+
 generate_csv() {
     local jsonl_file="$1"
     local csv_file="${jsonl_file%.jsonl}.csv"
@@ -138,14 +168,19 @@ generate_html() {
 <div class="container">
 HTMLHEAD
 
-    # Header section
+    # Header section — escape metadata to prevent XSS from JSONL injection
+    local safe_scan_id safe_scan_start safe_scan_end
+    safe_scan_id=$(_html_escape "${scan_id:-N/A}")
+    safe_scan_start=$(_html_escape "${scan_start:-N/A}")
+    safe_scan_end=$(_html_escape "${scan_end:-N/A}")
+
     cat >> "$html_file" <<HTMLHDR
 <header>
   <h1>Look4Gold13 &mdash; AU-13 Scan Report</h1>
   <div class="meta">
-    <span>Scan ID: <strong>${scan_id:-N/A}</strong></span>
-    <span>Started: <strong>${scan_start:-N/A}</strong></span>
-    <span>Ended: <strong>${scan_end:-N/A}</strong></span>
+    <span>Scan ID: <strong>${safe_scan_id}</strong></span>
+    <span>Started: <strong>${safe_scan_start}</strong></span>
+    <span>Ended: <strong>${safe_scan_end}</strong></span>
     <span>Keywords: <strong>${keyword_count:-0}</strong></span>
     <span>Findings: <strong>${finding_count:-0}</strong></span>
     <span>Records: <strong>${record_count:-0}</strong></span>
@@ -161,7 +196,7 @@ HTMLHDR
         [[ -z "$kw" ]] && continue
 
         local safe_kw
-        safe_kw=$(echo "$kw" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+        safe_kw=$(_html_escape "$kw")
 
         echo "<div class=\"keyword-section\">" >> "$html_file"
         echo "  <h2>${safe_kw}</h2>" >> "$html_file"
@@ -231,9 +266,9 @@ _html_web_search_section() {
         link_text=$(echo "$rec" | jq -r '.details.title // .description // ""')
         extra_desc=$(echo "$rec" | jq -r '.details.description // ""')
 
-        # Escape HTML
-        link_text=$(echo "$link_text" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
-        extra_desc=$(echo "$extra_desc" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+        # Escape HTML entities (all 5 critical entities)
+        link_text=$(_html_escape "$link_text")
+        extra_desc=$(_html_escape "$extra_desc")
         if [[ ${#extra_desc} -gt 300 ]]; then
             extra_desc="${extra_desc:0:300}..."
         fi
@@ -250,7 +285,7 @@ _html_web_search_section() {
         echo "      <span class=\"sev badge badge-${sev_class}\">${sev}</span>" >> "$html_file"
         if [[ -n "$link_url" ]]; then
             local safe_url
-            safe_url=$(echo "$link_url" | sed 's/&/\&amp;/g')
+            safe_url=$(_sanitize_url "$link_url")
             echo "      <a href=\"${safe_url}\" target=\"_blank\" rel=\"noopener\">${link_text}</a>" >> "$html_file"
         else
             echo "      <strong>${link_text}</strong>" >> "$html_file"
@@ -328,9 +363,9 @@ _html_source_section() {
                 ;;
         esac
 
-        # Escape HTML
-        link_text=$(echo "$link_text" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
-        extra_desc=$(echo "$extra_desc" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+        # Escape HTML entities (all 5 critical entities)
+        link_text=$(_html_escape "$link_text")
+        extra_desc=$(_html_escape "$extra_desc")
         # Truncate long descriptions
         if [[ ${#extra_desc} -gt 300 ]]; then
             extra_desc="${extra_desc:0:300}..."
@@ -347,9 +382,8 @@ _html_source_section() {
         echo "    <div class=\"finding\">" >> "$html_file"
         echo "      <span class=\"sev badge badge-${sev_class}\">${sev}</span>" >> "$html_file"
         if [[ -n "$link_url" ]]; then
-            # Escape ampersands in URL for valid HTML
             local safe_url
-            safe_url=$(echo "$link_url" | sed 's/&/\&amp;/g')
+            safe_url=$(_sanitize_url "$link_url")
             echo "      <a href=\"${safe_url}\" target=\"_blank\" rel=\"noopener\">${link_text}</a>" >> "$html_file"
         else
             echo "      <strong>${link_text}</strong>" >> "$html_file"
@@ -408,8 +442,8 @@ _html_ai_section() {
     esac
 
     local safe_summary safe_detailed
-    safe_summary=$(echo "$ai_summary" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
-    safe_detailed=$(echo "$ai_detailed" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+    safe_summary=$(_html_escape "$ai_summary")
+    safe_detailed=$(_html_escape "$ai_detailed")
 
     cat >> "$html_file" <<HTMLAI
   <div class="ai-box">
@@ -435,8 +469,8 @@ HTMLDETAIL
         pattern_count=$(echo "$ai_patterns_json" | jq 'length' 2>/dev/null || echo "0")
         while [[ $pi -lt $pattern_count ]]; do
             local p_title p_risk
-            p_title=$(echo "$ai_patterns_json" | jq -r ".[$pi].pattern // \"\"" 2>/dev/null | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
-            p_risk=$(echo "$ai_patterns_json" | jq -r ".[$pi].compound_risk // \"\"" 2>/dev/null | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+            p_title=$(_html_escape "$(echo "$ai_patterns_json" | jq -r ".[$pi].pattern // \"\"" 2>/dev/null)")
+            p_risk=$(_html_escape "$(echo "$ai_patterns_json" | jq -r ".[$pi].compound_risk // \"\"" 2>/dev/null)")
             cat >> "$html_file" <<HTMLPAT
       <div class="ai-pattern">
         <div class="pattern-title">${p_title}</div>
@@ -457,9 +491,9 @@ HTMLPAT
         while [[ $fi_idx -lt $fc ]]; do
             local f_risk f_title f_desc f_justification f_cat
             f_risk=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].risk_level // \"info\"" 2>/dev/null)
-            f_title=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].title // \"Finding\"" 2>/dev/null | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
-            f_desc=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].detailed_description // .[$fi_idx].description // \"\"" 2>/dev/null | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
-            f_justification=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].risk_justification // \"\"" 2>/dev/null | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+            f_title=$(_html_escape "$(echo "$ai_findings_json" | jq -r ".[$fi_idx].title // \"Finding\"" 2>/dev/null)")
+            f_desc=$(_html_escape "$(echo "$ai_findings_json" | jq -r ".[$fi_idx].detailed_description // .[$fi_idx].description // \"\"" 2>/dev/null)")
+            f_justification=$(_html_escape "$(echo "$ai_findings_json" | jq -r ".[$fi_idx].risk_justification // \"\"" 2>/dev/null)")
             f_cat=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].category // \"\"" 2>/dev/null | sed 's/_/ /g')
 
             local f_risk_class="info"
@@ -484,7 +518,7 @@ HTMLFINDING
             fi
 
             local f_systems
-            f_systems=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].affected_systems // [] | join(\", \")" 2>/dev/null | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+            f_systems=$(_html_escape "$(echo "$ai_findings_json" | jq -r ".[$fi_idx].affected_systems // [] | join(\", \")" 2>/dev/null)")
             if [[ -n "$f_systems" ]]; then
                 echo "        <div class=\"meta-row\"><strong>Affected Systems:</strong> ${f_systems}</div>" >> "$html_file"
             fi
@@ -494,7 +528,7 @@ HTMLFINDING
             t_active=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].threat_context.active_exploitation // false" 2>/dev/null)
             t_exploit=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].threat_context.exploit_available // false" 2>/dev/null)
             t_kev=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].threat_context.cisa_kev // false" 2>/dev/null)
-            t_notes=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].threat_context.notes // \"\"" 2>/dev/null | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+            t_notes=$(_html_escape "$(echo "$ai_findings_json" | jq -r ".[$fi_idx].threat_context.notes // \"\"" 2>/dev/null)")
 
             echo '        <div class="threat-indicators">' >> "$html_file"
             [[ "$t_active" == "true" ]] && echo '          <span class="threat-ind active">ACTIVELY EXPLOITED</span>' >> "$html_file"
@@ -518,7 +552,7 @@ HTMLFINDING
                     echo '          <strong style="font-size:0.8rem;color:var(--red)">Immediate (24-72h):</strong><ul>' >> "$html_file"
                     while IFS= read -r item; do
                         local safe_item
-                        safe_item=$(echo "$item" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+                        safe_item=$(_html_escape "$item")
                         echo "            <li>${safe_item}</li>" >> "$html_file"
                     done <<< "$rem_immediate"
                     echo '          </ul>' >> "$html_file"
@@ -527,7 +561,7 @@ HTMLFINDING
                     echo '          <strong style="font-size:0.8rem;color:var(--orange)">Short-term (1-2 weeks):</strong><ul>' >> "$html_file"
                     while IFS= read -r item; do
                         local safe_item
-                        safe_item=$(echo "$item" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+                        safe_item=$(_html_escape "$item")
                         echo "            <li>${safe_item}</li>" >> "$html_file"
                     done <<< "$rem_short"
                     echo '          </ul>' >> "$html_file"
@@ -536,7 +570,7 @@ HTMLFINDING
                     echo '          <strong style="font-size:0.8rem;color:var(--accent)">Long-term:</strong><ul>' >> "$html_file"
                     while IFS= read -r item; do
                         local safe_item
-                        safe_item=$(echo "$item" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+                        safe_item=$(_html_escape "$item")
                         echo "            <li>${safe_item}</li>" >> "$html_file"
                     done <<< "$rem_long"
                     echo '          </ul>' >> "$html_file"
@@ -557,10 +591,10 @@ HTMLFINDING
         echo '      <ul class="ai-sources">' >> "$html_file"
         echo "$ai_sources_json" | jq -r '.[]' 2>/dev/null | while IFS= read -r src; do
             local safe_src
-            safe_src=$(echo "$src" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
+            safe_src=$(_html_escape "$src")
             if echo "$src" | grep -q '^https\?://'; then
                 local safe_href
-                safe_href=$(echo "$src" | sed 's/&/\&amp;/g')
+                safe_href=$(_sanitize_url "$src")
                 echo "        <li><a href=\"${safe_href}\" target=\"_blank\" rel=\"noopener\">${safe_src}</a></li>" >> "$html_file"
             else
                 echo "        <li>${safe_src}</li>" >> "$html_file"

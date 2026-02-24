@@ -10,6 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_DIR="$SCRIPT_DIR/.config"
 OUTPUT_DIR=""
 KEYWORDS_FILE=""
+DORKS_FILE=""
 NO_AI=false
 DRY_RUN=false
 VERBOSE=false
@@ -25,6 +26,7 @@ Options:
   --config-dir DIR     Config directory (default: .config/)
   --output-dir DIR     Output directory (default: from settings.conf)
   --keywords-file FILE Keywords file (default: .config/keywords.conf)
+  --dorks-file FILE    Dorks file (default: .config/dorks.conf)
   --no-ai              Skip xAI/Grok analysis
   --dry-run            Load config and keywords but don't call APIs
   --verbose            Enable verbose (DEBUG) logging
@@ -47,6 +49,7 @@ while [[ $# -gt 0 ]]; do
         --config-dir)   CONFIG_DIR="$2"; shift 2 ;;
         --output-dir)   OUTPUT_DIR="$2"; shift 2 ;;
         --keywords-file) KEYWORDS_FILE="$2"; shift 2 ;;
+        --dorks-file)   DORKS_FILE="$2"; shift 2 ;;
         --no-ai)        NO_AI=true; shift ;;
         --dry-run)      DRY_RUN=true; shift ;;
         --verbose)      VERBOSE=true; shift ;;
@@ -55,6 +58,19 @@ while [[ $# -gt 0 ]]; do
         *)              echo "Unknown option: $1" >&2; usage ;;
     esac
 done
+
+# --- Validate paths (prevent directory traversal) ---
+_validate_path() {
+    local label="$1" path="$2"
+    # Reject paths containing ".." components
+    case "$path" in
+        */../*|*/..|../*|..) echo "ERROR: $label contains '..' (directory traversal not allowed): $path" >&2; exit 1 ;;
+    esac
+}
+[[ -n "$CONFIG_DIR" ]]    && _validate_path "--config-dir" "$CONFIG_DIR"
+[[ -n "$OUTPUT_DIR" ]]    && _validate_path "--output-dir" "$OUTPUT_DIR"
+[[ -n "$KEYWORDS_FILE" ]] && _validate_path "--keywords-file" "$KEYWORDS_FILE"
+[[ -n "$DORKS_FILE" ]]    && _validate_path "--dorks-file" "$DORKS_FILE"
 
 # --- Source libraries ---
 source "$SCRIPT_DIR/lib/common.sh"
@@ -89,6 +105,12 @@ if [[ -n "$KEYWORDS_FILE" ]]; then
 fi
 load_keywords || exit 1
 
+# Set dorks file if specified
+if [[ -n "$DORKS_FILE" ]]; then
+    export DORKS_FILE
+fi
+load_dorks || exit 1
+
 # Determine output directory
 # CLI --output-dir takes priority, then settings.conf OUTPUT_DIR, then default "output"
 if [[ -z "$OUTPUT_DIR" ]]; then
@@ -101,10 +123,13 @@ if [[ -z "$OUTPUT_DIR" ]]; then
 fi
 
 mkdir -p "$OUTPUT_DIR"
+chmod 700 "$OUTPUT_DIR" 2>/dev/null || true
 
-# Create output file
+# Create output file with restrictive permissions (scan results may contain sensitive findings)
 AUDIT_OUTPUT_FILE="$OUTPUT_DIR/scan_$(date -u '+%Y%m%d_%H%M%S').jsonl"
 export AUDIT_OUTPUT_FILE
+touch "$AUDIT_OUTPUT_FILE"
+chmod 600 "$AUDIT_OUTPUT_FILE"
 
 log_info "Look4Gold13 — AU-13 Information Disclosure Monitor"
 log_info "Output: $AUDIT_OUTPUT_FILE"
@@ -173,6 +198,9 @@ HTML_REPORT=""
 if [[ "$DRY_RUN" == "false" && -f "$AUDIT_OUTPUT_FILE" ]]; then
     CSV_REPORT=$(generate_csv "$AUDIT_OUTPUT_FILE") || true
     HTML_REPORT=$(generate_html "$AUDIT_OUTPUT_FILE") || true
+    # Restrict report file permissions (scan results may contain sensitive findings)
+    [[ -n "$CSV_REPORT" && -f "$CSV_REPORT" ]]   && chmod 600 "$CSV_REPORT"
+    [[ -n "$HTML_REPORT" && -f "$HTML_REPORT" ]] && chmod 600 "$HTML_REPORT"
 fi
 
 # --- Print summary (suppressed in silent mode) ---

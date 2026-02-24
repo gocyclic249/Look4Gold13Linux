@@ -13,7 +13,7 @@ Searches web and threat intelligence sources for evidence of unauthorized disclo
 - **Deduplication**: Web search results from Brave and Tavily are deduplicated by URL before AI analysis
 - **Audit records**: `lib/audit.sh` formats all output as AU-3 compliant JSONL
 - **Reports**: `lib/report.sh` generates CSV and HTML reports from the JSONL output
-- **Config**: `.config/settings.conf` (tracked), `.config/apis.conf` (gitignored, secrets), `.config/keywords.conf` (gitignored, user-specific)
+- **Config**: `.config/settings.conf` (tracked), `.config/apis.conf` (gitignored, secrets), `.config/keywords.conf` (gitignored, user-specific), `.config/dorks.conf` (gitignored, user-customizable search dorks)
 
 ## Key Files
 
@@ -53,4 +53,4 @@ bash look4gold.sh --no-ai            # Skip xAI analysis
 - Secrets live in `.config/apis.conf` (never committed)
 - Templates (`*.template`) are tracked and serve as documentation for config format
 - Logging goes to stderr, audit records go to the output file
-- CLI flags: `--config-dir`, `--output-dir`, `--keywords-file`, `--no-ai`, `--dry-run`, `--verbose`
+- CLI flags: `--config-dir`, `--output-dir`, `--keywords-file`, `--dorks-file`, `--no-ai`, `--dry-run`, `--verbose`

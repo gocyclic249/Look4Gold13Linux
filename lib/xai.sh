@@ -115,10 +115,15 @@ $findings_json"
 
     # Write large content to temp files to avoid "Argument list too long"
     # (jq --arg passes data via argv which has OS limits; --rawfile reads from disk)
-    local tmp_system tmp_user
+    local tmp_system tmp_user tmp_response tmp_body tmp_ai_content tmp_ai_details
     tmp_system=$(mktemp)
     tmp_user=$(mktemp)
-    trap "rm -f '$tmp_system' '$tmp_user'" RETURN
+    tmp_response=$(mktemp)
+    tmp_body=$(mktemp)
+    tmp_ai_content=$(mktemp)
+    tmp_ai_details=$(mktemp)
+    # Single trap cleans up ALL temp files on function return (normal or error)
+    trap "rm -f '$tmp_system' '$tmp_user' '$tmp_response' '$tmp_body' '$tmp_ai_content' '$tmp_ai_details'" RETURN
 
     printf '%s' "$system_prompt" > "$tmp_system"
     printf '%s' "$user_message" > "$tmp_user"
@@ -138,14 +143,9 @@ $findings_json"
             tools: $tools
         }')
 
-    # Write response to temp file to avoid "Argument list too long" on large API responses
-    local tmp_response tmp_body
-    tmp_response=$(mktemp)
-    tmp_body=$(mktemp)
-
     echo "$request_body" | curl -s -w "\n%{http_code}" \
         -X POST \
-        --max-time "${XAI_TIMEOUT:-300}" \
+        --max-time "${XAI_TIMEOUT:-300}" --max-redirs 5 \
         -H "Content-Type: application/json" \
         -H "Authorization: Bearer $XAI_API_KEY" \
         -d @- \
@@ -155,14 +155,12 @@ $findings_json"
     local http_code
     http_code=$(tail -n1 "$tmp_response")
     sed '$d' "$tmp_response" > "$tmp_body"
-    rm -f "$tmp_response"
 
     if [[ "$http_code" -ne 200 ]]; then
         log_error "xAI API returned HTTP $http_code"
         emit_audit_record "AI_ANALYSIS" "xai_grok" "$keyword" "error" "info" \
             "xAI API error: HTTP $http_code" \
             "$(jq -nc --arg code "$http_code" '{http_code: $code}')"
-        rm -f "$tmp_body"
         return 1
     fi
 
@@ -186,7 +184,6 @@ $findings_json"
         log_warn "xAI: empty response"
         emit_audit_record "AI_ANALYSIS" "xai_grok" "$keyword" "error" "info" \
             "xAI returned empty analysis" "null"
-        rm -f "$tmp_body"
         return 1
     fi
 
@@ -197,11 +194,8 @@ $findings_json"
          | .annotations[]? | select(.type == "url_citation") | .url]
         // []
     ' < "$tmp_body" 2>/dev/null)
-    rm -f "$tmp_body"
 
     # Write ai_content to temp file to avoid "Argument list too long" on large responses
-    local tmp_ai_content
-    tmp_ai_content=$(mktemp)
     printf '%s' "$ai_content" > "$tmp_ai_content"
 
     # Try to parse AI response as structured JSON
@@ -264,11 +258,8 @@ $findings_json"
     else
         ai_details=$(jq -Rsc '{raw_analysis: .}' < "$tmp_ai_content")
     fi
-    rm -f "$tmp_ai_content"
 
     # Write ai_details to temp file for subsequent jq operations
-    local tmp_ai_details
-    tmp_ai_details=$(mktemp)
     printf '%s' "$ai_details" > "$tmp_ai_details"
 
     # Merge citations into details if available
@@ -287,7 +278,6 @@ $findings_json"
     local summary
     summary=$(jq -r '.executive_summary // .summary // .raw_analysis // "AI analysis completed"' < "$tmp_ai_details" 2>/dev/null)
     [[ "$summary" == "null" || -z "$summary" ]] && summary="AI analysis completed"
-    rm -f "$tmp_ai_details"
     # Truncate long raw text summaries
     if [[ ${#summary} -gt 500 ]]; then
         summary="${summary:0:497}..."
