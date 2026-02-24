@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # lib/tavily.sh — Tavily Search API module with security-focused dork queries
-# Uses the same dork groups as Brave to ensure consistent keyword coverage.
-
-# Reuse the same dork groups defined in brave.sh (_DISCLOSURE_DORK_GROUPS, _BREACH_DORK_GROUPS)
+# Dork groups are loaded from .config/dorks.conf by load_dorks() in common.sh.
 
 tavily_search() {
     local keyword="$1"

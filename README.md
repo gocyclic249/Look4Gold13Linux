@@ -84,6 +84,7 @@ Options:
   --config-dir DIR     Config directory (default: .config/)
   --output-dir DIR     Output directory (default: from settings.conf)
   --keywords-file FILE Keywords file (default: .config/keywords.conf)
+  --dorks-file FILE    Dorks file (default: .config/dorks.conf)
   --no-ai              Skip xAI/Grok analysis
   --dry-run            Load config and keywords but don't call APIs
   --verbose            Enable verbose (DEBUG) logging
@@ -147,6 +148,24 @@ AcmeTech Router X500
 acme-corp.com
 ```
 
+### .config/dorks.conf
+
+Customizable search dork groups organized by section. Copy from `dorks.conf.template` and edit to fit your threat profile. Each non-comment line within a section becomes a separate API call per keyword.
+
+```
+# Sections: [disclosure], [breach], [chan]
+[disclosure]
+site:pastebin.com OR site:github.com OR site:gist.github.com OR site:reddit.com
+site:your-industry-forum.com OR site:your-paste-site.com
+
+[breach]
+breach data leak compromised
+ransomware attack security incident
+
+[chan]
+site:archive.4plebs.org OR site:desuarchive.org
+```
+
 ## Project Structure
 
 ```
@@ -167,6 +186,7 @@ Look4Gold13Linux/
     settings.conf       General settings
     apis.conf.template  API key template
     keywords.conf.template  Keywords template
+    dorks.conf.template     Search dork groups template
   output/               Scan results (gitignored)
 ```
 

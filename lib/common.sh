@@ -106,6 +106,45 @@ load_keywords() {
     log_info "Loaded ${#KEYWORDS[@]} keyword(s)"
 }
 
+load_dorks() {
+    local dorks_file="${DORKS_FILE:-$CONFIG_DIR/dorks.conf}"
+
+    if [[ ! -f "$dorks_file" ]]; then
+        log_error "Dorks file not found: $dorks_file"
+        log_error "Run setup.sh or copy dorks.conf.template to dorks.conf."
+        return 1
+    fi
+
+    _DISCLOSURE_DORK_GROUPS=()
+    _BREACH_DORK_GROUPS=()
+    _CHAN_DORK_GROUPS=()
+
+    local current_section=""
+    while IFS= read -r line; do
+        # Strip leading/trailing whitespace
+        line="$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+        # Skip comments and blank lines
+        [[ -z "$line" || "$line" == \#* ]] && continue
+        # Section headers
+        case "$line" in
+            \[disclosure\]) current_section="disclosure"; continue ;;
+            \[breach\])     current_section="breach"; continue ;;
+            \[chan\])        current_section="chan"; continue ;;
+            \[*\])          log_warn "Dorks: unknown section '$line', skipping"; current_section=""; continue ;;
+        esac
+        # Append to the appropriate array
+        case "$current_section" in
+            disclosure) _DISCLOSURE_DORK_GROUPS+=("$line") ;;
+            breach)     _BREACH_DORK_GROUPS+=("$line") ;;
+            chan)        _CHAN_DORK_GROUPS+=("$line") ;;
+            *)          log_warn "Dorks: line outside a section, skipping: $line" ;;
+        esac
+    done < "$dorks_file"
+
+    local total=$(( ${#_DISCLOSURE_DORK_GROUPS[@]} + ${#_BREACH_DORK_GROUPS[@]} + ${#_CHAN_DORK_GROUPS[@]} ))
+    log_info "Loaded $total dork group(s) (${#_DISCLOSURE_DORK_GROUPS[@]} disclosure, ${#_BREACH_DORK_GROUPS[@]} breach, ${#_CHAN_DORK_GROUPS[@]} chan)"
+}
+
 url_encode() {
     local string="$1"
     # Pure bash/jq URL encoding to avoid curl warnings

@@ -108,6 +108,17 @@ else
 fi
 echo
 
+# --- Dorks file ---
+dorks_file="$CONFIG_DIR/dorks.conf"
+if [[ ! -f "$dorks_file" ]]; then
+    cp "$CONFIG_DIR/dorks.conf.template" "$dorks_file"
+    echo "Created $dorks_file from template."
+    echo "  -> Edit this file to customize search dorks for your threat profile."
+else
+    echo "Dorks file already exists: $dorks_file"
+fi
+echo
+
 # --- Validate API keys ---
 echo "Validating API keys..."
 validate_api() {

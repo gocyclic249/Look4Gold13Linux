@@ -3,12 +3,7 @@
 # Routes site:-scoped queries through Brave/Tavily instead of direct FoolFuuka
 # API calls (which are largely Cloudflare-blocked). Search engines have already
 # crawled and indexed these archive pages, so results come back reliably.
-
-# Dork groups — pairs of archive sites searched in a single API call
-_CHAN_DORK_GROUPS=(
-    "site:archive.4plebs.org OR site:desuarchive.org"
-    "site:archived.moe OR site:thebarchive.com"
-)
+# Dork groups are loaded from .config/dorks.conf [chan] section by load_dorks().
 
 fourchan_search() {
     local keyword="$1"

@@ -10,6 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_DIR="$SCRIPT_DIR/.config"
 OUTPUT_DIR=""
 KEYWORDS_FILE=""
+DORKS_FILE=""
 NO_AI=false
 DRY_RUN=false
 VERBOSE=false
@@ -25,6 +26,7 @@ Options:
   --config-dir DIR     Config directory (default: .config/)
   --output-dir DIR     Output directory (default: from settings.conf)
   --keywords-file FILE Keywords file (default: .config/keywords.conf)
+  --dorks-file FILE    Dorks file (default: .config/dorks.conf)
   --no-ai              Skip xAI/Grok analysis
   --dry-run            Load config and keywords but don't call APIs
   --verbose            Enable verbose (DEBUG) logging
@@ -47,6 +49,7 @@ while [[ $# -gt 0 ]]; do
         --config-dir)   CONFIG_DIR="$2"; shift 2 ;;
         --output-dir)   OUTPUT_DIR="$2"; shift 2 ;;
         --keywords-file) KEYWORDS_FILE="$2"; shift 2 ;;
+        --dorks-file)   DORKS_FILE="$2"; shift 2 ;;
         --no-ai)        NO_AI=true; shift ;;
         --dry-run)      DRY_RUN=true; shift ;;
         --verbose)      VERBOSE=true; shift ;;
@@ -88,6 +91,12 @@ if [[ -n "$KEYWORDS_FILE" ]]; then
     export KEYWORDS_FILE
 fi
 load_keywords || exit 1
+
+# Set dorks file if specified
+if [[ -n "$DORKS_FILE" ]]; then
+    export DORKS_FILE
+fi
+load_dorks || exit 1
 
 # Determine output directory
 # CLI --output-dir takes priority, then settings.conf OUTPUT_DIR, then default "output"
