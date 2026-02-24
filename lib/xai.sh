@@ -187,6 +187,13 @@ $findings_json"
         return 1
     fi
 
+    # Strip Grok proprietary rendering tags (inline citations already captured via annotations)
+    # e.g. <grok:render type="render_inline_citation"><argument name="citation_id">60</argument></grok:render>
+    ai_content=$(printf '%s' "$ai_content" | sed \
+        -e 's/<grok:[^>]*>//g' \
+        -e 's/<\/grok:[^>]*>//g' \
+        -e 's/<argument [^>]*>[^<]*<\/argument>//g')
+
     # Extract citations from Grok's web search annotations
     local ai_citations
     ai_citations=$(jq -c '
