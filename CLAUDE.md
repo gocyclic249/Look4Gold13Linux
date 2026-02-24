@@ -27,7 +27,7 @@ Searches web and threat intelligence sources for evidence of unauthorized disclo
 | `lib/tavily.sh` | Tavily Search API integration |
 | `lib/nist.sh` | NIST NVD CVE search |
 | `lib/otx.sh` | AlienVault OTX threat intel |
-| `lib/fourchan.sh` | 4chan archive search (FoolFuuka API, no key required) |
+| `lib/fourchan.sh` | 4chan archive search (via Brave/Tavily web search dorks) |
 | `lib/xai.sh` | xAI Grok AI analysis of findings |
 | `lib/report.sh` | CSV and HTML report generation from JSONL |
 
@@ -35,7 +35,7 @@ Searches web and threat intelligence sources for evidence of unauthorized disclo
 
 - `bash` (4.0+), `curl`, `jq`
 - API keys: Brave Search, Tavily Search, NIST NVD, AlienVault OTX, xAI (all optional individually; Brave and Tavily can be used independently or together)
-- No key required: 4chan archives (FoolFuuka API — free, public access)
+- 4chan archives: via Brave/Tavily web search dorks (requires Brave or Tavily API key)
 
 ## Running
 

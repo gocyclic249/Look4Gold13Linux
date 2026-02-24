@@ -145,9 +145,9 @@ validate_api "xAI (Grok)" "$XAI_API_KEY" \
 echo
 
 # --- 4chan Archive Search ---
-echo "4chan Archive Search (no API key required)"
-echo "  Searches public 4chan archives (/pol/, /g/, /b/) for keyword mentions."
-echo "  Uses FoolFuuka API — free, no authentication needed."
+echo "4chan Archive Search (via web search dorks)"
+echo "  Searches indexed 4chan archive pages using site: dork queries."
+echo "  Requires a Brave or Tavily API key."
 
 # Load current setting if settings.conf exists
 _fourchan_current="${FOURCHAN_ENABLED:-true}"

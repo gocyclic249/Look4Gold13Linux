@@ -137,7 +137,7 @@ for keyword in "${KEYWORDS[@]}"; do
         keyword_findings=$(jq -sc --arg kw "$keyword" '
             [.[] | select(.keyword == $kw and .outcome == "found")]
             | group_by(
-                if .event_type == "SEARCH_WEB" then (.details.url // .description)
+                if (.event_type == "SEARCH_WEB" or .event_type == "SEARCH_CHAN") then (.details.url // .description)
                 else (.event_type + "|" + .source + "|" + .description)
                 end
               )

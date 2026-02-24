@@ -23,10 +23,10 @@ For each keyword you configure, Look4Gold13 queries multiple intelligence source
 | **Tavily Search** | Web results using the same security dork queries as Brave, providing a second independent search source | [Tavily Search API](https://app.tavily.com/home) |
 | **NIST NVD** | CVE vulnerability records matching keywords | [NVD API](https://nvd.nist.gov/developers) |
 | **AlienVault OTX** | Threat intelligence pulses and indicators | [OTX API](https://otx.alienvault.com/api) |
-| **4chan Archives** | Anonymous imageboard posts on /pol/, /g/, /b/ — known venues for data leaks, credential dumps, and organizational exposure | [FoolFuuka API](https://archive.4plebs.org) (no key required) |
+| **4chan Archives** | Indexed archive pages from 4plebs, desuarchive, archived.moe — known venues for data leaks, credential dumps, and organizational exposure | Via Brave/Tavily web search dorks (requires Brave or Tavily API key) |
 | **xAI (Grok)** | AI-powered deep analysis of all findings with live web research | [xAI API](https://console.x.ai/) |
 
-Brave and Tavily can be used independently or together. When both are enabled, results are **deduplicated by URL** before being sent to AI analysis — the first occurrence is kept (Brave results take priority), so duplicate URLs from Tavily are removed automatically. 4chan archive results use a separate event type (`SEARCH_CHAN`) and are deduplicated independently before being included in AI analysis.
+Brave and Tavily can be used independently or together. When both are enabled, results are **deduplicated by URL** before being sent to AI analysis — the first occurrence is kept (Brave results take priority), so duplicate URLs from Tavily are removed automatically. 4chan archive results use a separate event type (`SEARCH_CHAN`) and are also deduplicated by URL, preventing duplicates if the same archive page appears in both chan dork and web dork results.
 
 ## Output
 
@@ -41,7 +41,7 @@ Each scan produces:
 - **bash** 4.0+
 - **curl**
 - **jq**
-- At least one API key (Brave, Tavily, NIST NVD, OTX, or xAI) or 4chan archive search enabled
+- At least one API key (Brave, Tavily, NIST NVD, OTX, or xAI); 4chan archive search requires Brave or Tavily
 
 ## Quick Start
 
@@ -133,9 +133,7 @@ bash look4gold.sh --silent
 | `XAI_TIMEOUT` | `300` | API timeout in seconds |
 | `XAI_WEB_SEARCH` | `true` | Let Grok search the web during analysis |
 | `SCAN_FREQUENCY` | `on_demand` | Metadata label for audit records |
-| `FOURCHAN_ENABLED` | `true` | Enable 4chan archive search (no API key needed) |
-| `FOURCHAN_BOARDS` | `pol:https://archive.4plebs.org,...` | Board:archive pairs (comma-separated) |
-| `FOURCHAN_MAX_PAGES` | `1` | Max result pages per board (~25 results/page) |
+| `FOURCHAN_ENABLED` | `true` | Enable 4chan archive search (via web search dorks; requires Brave or Tavily API key) |
 
 ### .config/keywords.conf
 
@@ -162,7 +160,7 @@ Look4Gold13Linux/
     tavily.sh           Tavily Search with shared dork queries + deduplication
     nist.sh             NIST NVD CVE search
     otx.sh              AlienVault OTX threat intelligence
-    fourchan.sh         4chan archive search (FoolFuuka API, no key)
+    fourchan.sh         4chan archive search (via Brave/Tavily web search dorks)
     xai.sh              xAI Grok AI analysis with web search
     report.sh           CSV and HTML report generation (combined web search view)
   .config/
