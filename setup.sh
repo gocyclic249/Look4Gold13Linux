@@ -144,6 +144,28 @@ validate_api "xAI (Grok)" "$XAI_API_KEY" \
 
 echo
 
+# --- 4chan Archive Search ---
+echo "4chan Archive Search (no API key required)"
+echo "  Searches public 4chan archives (/pol/, /g/, /b/) for keyword mentions."
+echo "  Uses FoolFuuka API — free, no authentication needed."
+
+# Load current setting if settings.conf exists
+_fourchan_current="${FOURCHAN_ENABLED:-true}"
+if [[ -f "$CONFIG_DIR/settings.conf" ]]; then
+    _fourchan_current=$(grep '^FOURCHAN_ENABLED=' "$CONFIG_DIR/settings.conf" 2>/dev/null | cut -d= -f2 | tr -d '"' || echo "true")
+fi
+[[ -z "$_fourchan_current" ]] && _fourchan_current="true"
+
+read -rp "  Enable 4chan archive search? [${_fourchan_current}] (true/false, Enter to keep): " _fourchan_input
+_fourchan_input="${_fourchan_input:-$_fourchan_current}"
+if [[ "$_fourchan_input" == "true" || "$_fourchan_input" == "false" ]]; then
+    sed -i "s/^FOURCHAN_ENABLED=.*/FOURCHAN_ENABLED=${_fourchan_input}/" "$CONFIG_DIR/settings.conf" 2>/dev/null || true
+    echo "  [OK] 4chan archive search: $_fourchan_input"
+else
+    echo "  [SKIP] Invalid input, keeping current value: $_fourchan_current"
+fi
+echo
+
 # --- Make main script executable ---
 chmod +x "$SCRIPT_DIR/look4gold.sh" 2>/dev/null || true
 echo "Setup complete. Run: bash look4gold.sh --help"

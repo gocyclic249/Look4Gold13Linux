@@ -9,7 +9,7 @@ Searches web and threat intelligence sources for evidence of unauthorized disclo
 ## Architecture
 
 - **Bash-based** — all scripts in `lib/` are sourced by `look4gold.sh`
-- **API modules**: Brave Search (`lib/brave.sh`), Tavily Search (`lib/tavily.sh`), NIST NVD (`lib/nist.sh`), AlienVault OTX (`lib/otx.sh`), xAI Grok (`lib/xai.sh`)
+- **API modules**: Brave Search (`lib/brave.sh`), Tavily Search (`lib/tavily.sh`), NIST NVD (`lib/nist.sh`), AlienVault OTX (`lib/otx.sh`), 4chan Archives (`lib/fourchan.sh`), xAI Grok (`lib/xai.sh`)
 - **Deduplication**: Web search results from Brave and Tavily are deduplicated by URL before AI analysis
 - **Audit records**: `lib/audit.sh` formats all output as AU-3 compliant JSONL
 - **Reports**: `lib/report.sh` generates CSV and HTML reports from the JSONL output
@@ -27,6 +27,7 @@ Searches web and threat intelligence sources for evidence of unauthorized disclo
 | `lib/tavily.sh` | Tavily Search API integration |
 | `lib/nist.sh` | NIST NVD CVE search |
 | `lib/otx.sh` | AlienVault OTX threat intel |
+| `lib/fourchan.sh` | 4chan archive search (FoolFuuka API, no key required) |
 | `lib/xai.sh` | xAI Grok AI analysis of findings |
 | `lib/report.sh` | CSV and HTML report generation from JSONL |
 
@@ -34,6 +35,7 @@ Searches web and threat intelligence sources for evidence of unauthorized disclo
 
 - `bash` (4.0+), `curl`, `jq`
 - API keys: Brave Search, Tavily Search, NIST NVD, AlienVault OTX, xAI (all optional individually; Brave and Tavily can be used independently or together)
+- No key required: 4chan archives (FoolFuuka API — free, public access)
 
 ## Running
 

@@ -31,7 +31,9 @@ xai_analyze() {
     local system_prompt
     system_prompt='You are an expert cybersecurity analyst and threat intelligence specialist with deep expertise in NIST SP 800-53 AU-13 (Monitoring for Information Disclosure). You have been tasked with performing a thorough, in-depth risk assessment of organizational information disclosure findings.
 
-You will receive aggregated findings from multiple intelligence sources: web search results (Brave Search), vulnerability databases (NIST NVD CVEs), and threat intelligence feeds (AlienVault OTX pulses). These findings represent the STARTING POINT of your analysis — not the final picture.
+You will receive aggregated findings from multiple intelligence sources: web search results (Brave Search, Tavily Search), vulnerability databases (NIST NVD CVEs), threat intelligence feeds (AlienVault OTX pulses), and 4chan archive posts (anonymous imageboard posts from boards like /pol/, /g/, /b/ known for data leaks and credential dumps). These findings represent the STARTING POINT of your analysis — not the final picture.
+
+IMPORTANT NOTE ON 4CHAN ARCHIVE FINDINGS: Posts from anonymous imageboards require extra scrutiny. Distinguish between genuine data leaks (credentials, internal documents, PII) and noise/disinformation/trolling. A real credential dump or internal document excerpt on 4chan is critical severity; vague mentions or trolling about an organization are low/info. Assess the specificity and plausibility of the disclosed information.
 
 YOUR MANDATE:
 - Think deeply and critically about each finding. Do not provide surface-level summaries.
