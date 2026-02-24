@@ -24,6 +24,15 @@ emit_audit_record() {
     local timestamp
     timestamp="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
+    # Write large fields to temp files to avoid "Argument list too long"
+    local tmp_desc tmp_det
+    tmp_desc=$(mktemp)
+    tmp_det=$(mktemp)
+    trap "rm -f '$tmp_desc' '$tmp_det'" RETURN
+
+    printf '%s' "$description" > "$tmp_desc"
+    printf '%s' "${details:-null}" > "$tmp_det"
+
     local record
     record=$(jq -nc \
         --arg ts "$timestamp" \
@@ -32,8 +41,8 @@ emit_audit_record() {
         --arg kw "$keyword" \
         --arg oc "$outcome" \
         --arg sev "$severity" \
-        --arg desc "$description" \
-        --argjson det "${details:-null}" \
+        --rawfile desc "$tmp_desc" \
+        --slurpfile det "$tmp_det" \
         --arg sid "${_SCAN_ID:-unknown}" \
         '{
             timestamp: $ts,
@@ -43,7 +52,7 @@ emit_audit_record() {
             outcome: $oc,
             severity: $sev,
             description: $desc,
-            details: $det,
+            details: $det[0],
             control_ref: "AU-13",
             au2_event_class: "information_disclosure_monitoring",
             scan_id: $sid

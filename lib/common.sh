@@ -64,7 +64,7 @@ load_config() {
 
     # Validate at least one API key is set
     local has_key=false
-    for key_var in BRAVE_API_KEY NIST_API_KEY OTX_API_KEY XAI_API_KEY; do
+    for key_var in BRAVE_API_KEY TAVILY_API_KEY NIST_API_KEY OTX_API_KEY XAI_API_KEY; do
         if [[ -n "${!key_var:-}" ]]; then
             has_key=true
             break
@@ -150,6 +150,27 @@ check_api_quotas() {
             log_warn "Brave Search: unexpected HTTP $brave_code"
         fi
         rm -f "$brave_hdr_file"
+    fi
+
+    # --- Tavily Search ---
+    if [[ -n "${TAVILY_API_KEY:-}" ]]; then
+        total=$((total + 1))
+        local tavily_code
+        tavily_code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $TAVILY_API_KEY" \
+            -d '{"query":"test","max_results":1}' \
+            "https://api.tavily.com/search" \
+            2>/dev/null)
+        if [[ "$tavily_code" == "200" ]]; then
+            log_info "Tavily Search: API key valid"
+            ready=$((ready + 1))
+        elif [[ "$tavily_code" == "401" || "$tavily_code" == "403" ]]; then
+            log_error "Tavily Search: invalid API key (HTTP $tavily_code)"
+        else
+            log_warn "Tavily Search: unexpected HTTP $tavily_code"
+        fi
     fi
 
     # --- NIST NVD ---

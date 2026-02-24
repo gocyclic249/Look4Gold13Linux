@@ -36,6 +36,7 @@ apis_file="$CONFIG_DIR/apis.conf"
 
 # Load existing keys if present
 BRAVE_API_KEY=""
+TAVILY_API_KEY=""
 NIST_API_KEY=""
 OTX_API_KEY=""
 XAI_API_KEY=""
@@ -69,6 +70,9 @@ echo
 echo "  Brave Search API — https://brave.com/search/api/"
 BRAVE_API_KEY=$(prompt_key "BRAVE_API_KEY" "$BRAVE_API_KEY" "Brave Search")
 echo
+echo "  Tavily Search API — https://app.tavily.com/home"
+TAVILY_API_KEY=$(prompt_key "TAVILY_API_KEY" "$TAVILY_API_KEY" "Tavily Search")
+echo
 echo "  NIST NVD API — https://nvd.nist.gov/developers/request-an-api-key"
 NIST_API_KEY=$(prompt_key "NIST_API_KEY" "$NIST_API_KEY" "NIST NVD")
 echo
@@ -85,6 +89,7 @@ cat > "$apis_file" <<EOF
 # DO NOT commit this file to version control.
 
 BRAVE_API_KEY="$BRAVE_API_KEY"
+TAVILY_API_KEY="$TAVILY_API_KEY"
 NIST_API_KEY="$NIST_API_KEY"
 OTX_API_KEY="$OTX_API_KEY"
 XAI_API_KEY="$XAI_API_KEY"
@@ -124,6 +129,9 @@ validate_api() {
 
 validate_api "Brave Search" "$BRAVE_API_KEY" \
     "curl -sf -H 'X-Subscription-Token: $BRAVE_API_KEY' 'https://api.search.brave.com/res/v1/web/search?q=test&count=1'"
+
+validate_api "Tavily Search" "$TAVILY_API_KEY" \
+    "curl -sf -X POST -H 'Content-Type: application/json' -H 'Authorization: Bearer $TAVILY_API_KEY' -d '{\"query\":\"test\",\"max_results\":1}' 'https://api.tavily.com/search'"
 
 validate_api "NIST NVD" "$NIST_API_KEY" \
     "curl -sf -H 'apiKey: $NIST_API_KEY' 'https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=test&resultsPerPage=1'"

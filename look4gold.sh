@@ -60,6 +60,7 @@ done
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/audit.sh"
 source "$SCRIPT_DIR/lib/brave.sh"
+source "$SCRIPT_DIR/lib/tavily.sh"
 source "$SCRIPT_DIR/lib/nist.sh"
 source "$SCRIPT_DIR/lib/otx.sh"
 source "$SCRIPT_DIR/lib/xai.sh"
@@ -122,16 +123,36 @@ for keyword in "${KEYWORDS[@]}"; do
     log_info "--- Scanning keyword: '$keyword' ---"
 
     brave_search "$keyword" || true
+    tavily_search "$keyword" || true
     nist_search "$keyword" || true
     otx_search "$keyword" || true
 
-    # Per-keyword AI analysis
+    # Deduplicate web search results (Brave + Tavily) and run AI analysis
     if [[ "$NO_AI" == "false" && "$DRY_RUN" == "false" && -f "$AUDIT_OUTPUT_FILE" ]]; then
-        keyword_findings=$(jq -sc --arg kw "$keyword" \
-            '[.[] | select(.keyword == $kw and .outcome == "found")]' \
-            "$AUDIT_OUTPUT_FILE" 2>/dev/null || echo "[]")
+        # Deduplicate SEARCH_WEB findings by URL before sending to AI.
+        # Keeps the first occurrence (preserves source priority: brave then tavily).
+        # Non-web findings (NIST, OTX) pass through unchanged.
+        keyword_findings=$(jq -sc --arg kw "$keyword" '
+            [.[] | select(.keyword == $kw and .outcome == "found")]
+            | group_by(
+                if .event_type == "SEARCH_WEB" then (.details.url // .description)
+                else (.event_type + "|" + .source + "|" + .description)
+                end
+              )
+            | [.[] | first]
+        ' "$AUDIT_OUTPUT_FILE" 2>/dev/null || echo "[]")
 
         kw_finding_count=$(echo "$keyword_findings" | jq 'length' 2>/dev/null || echo "0")
+
+        # Log dedup stats for web search results
+        total_web=$(jq -sc --arg kw "$keyword" '
+            [.[] | select(.keyword == $kw and .outcome == "found" and .event_type == "SEARCH_WEB")] | length
+        ' "$AUDIT_OUTPUT_FILE" 2>/dev/null || echo "0")
+        deduped_web=$(echo "$keyword_findings" | jq '[.[] | select(.event_type == "SEARCH_WEB")] | length' 2>/dev/null || echo "0")
+        if [[ "$total_web" -gt 0 && "$total_web" != "$deduped_web" ]]; then
+            log_info "Deduplicated web results for '$keyword': $total_web -> $deduped_web (removed $((total_web - deduped_web)) duplicates)"
+        fi
+
         if [[ "$kw_finding_count" -gt 0 ]]; then
             log_info "Sending $kw_finding_count finding(s) for '$keyword' to xAI for analysis..."
             xai_analyze "$keyword" "$keyword_findings" || true
