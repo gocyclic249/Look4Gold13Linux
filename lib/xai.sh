@@ -220,12 +220,14 @@ $findings_json"
         fi
     fi
 
-    # Attempt 3: extract {...} blocks, validate each has expected schema keys
+    # Attempt 3: try parsing JSON from each { line as a starting position
+    # The AI response may have prose -> small JSON fragment -> prose -> real analysis JSON.
+    # jq stops at non-JSON text between objects, so we must try multiple start positions.
     if [[ -z "$parsed_json" ]]; then
-        local extracted_all
-        # Drop lines before the first {, strip any prefix on that line, emit all JSON objects
-        extracted_all=$(sed -n '/{/,$p' < "$tmp_ai_content" | sed '1s/^[^{]*//' | jq -c '.' 2>/dev/null)
-        while IFS= read -r candidate; do
+        while IFS= read -r line_num; do
+            [[ -z "$line_num" ]] && continue
+            local candidate
+            candidate=$(sed -n "${line_num},\$p" < "$tmp_ai_content" | sed '1s/^[^{]*//' | jq -c '.' 2>/dev/null | head -1)
             [[ -z "$candidate" ]] && continue
             local has_keys
             has_keys=$(echo "$candidate" | jq 'has("overall_risk") or has("executive_summary") or has("prioritized_findings")' 2>/dev/null)
@@ -233,13 +235,24 @@ $findings_json"
                 parsed_json="$candidate"
                 break
             fi
-        done <<< "$extracted_all"
-        # If no candidate had expected keys, fall back to first valid JSON object
-        if [[ -z "$parsed_json" ]]; then
-            local first_obj
-            first_obj=$(echo "$extracted_all" | head -1)
-            if [[ -n "$first_obj" ]]; then
-                parsed_json="$first_obj"
+        done < <(grep -n '{' "$tmp_ai_content" | cut -d: -f1)
+    fi
+
+    # Attempt 4: streaming parser for near-valid JSON (LLM occasionally drops a bracket)
+    # jq --stream can extract fields that appear BEFORE the first parse error.
+    if [[ -z "$parsed_json" ]]; then
+        local stream_obj
+        stream_obj=$(jq --stream -c \
+            'select(length == 2 and (.[0] | length) == 1 and
+                    (.[0][0] | IN("overall_risk","executive_summary","detailed_assessment")))
+             | {(.[0][0]): .[1]}' < "$tmp_ai_content" 2>/dev/null \
+            | jq -sc 'add // empty')
+        if [[ -n "$stream_obj" ]]; then
+            local has_keys
+            has_keys=$(echo "$stream_obj" | jq 'has("overall_risk") or has("executive_summary")' 2>/dev/null)
+            if [[ "$has_keys" == "true" ]]; then
+                parsed_json="$stream_obj"
+                log_info "xAI: recovered key fields via streaming parser"
             fi
         fi
     fi
@@ -247,7 +260,7 @@ $findings_json"
     if [[ -n "$parsed_json" ]]; then
         ai_details="$parsed_json"
     else
-        ai_details=$(jq -Rnsc '{raw_analysis: .}' < "$tmp_ai_content")
+        ai_details=$(jq -Rsc '{raw_analysis: .}' < "$tmp_ai_content")
     fi
     rm -f "$tmp_ai_content"
 
@@ -264,8 +277,10 @@ $findings_json"
 
     # Extract risk and summary from the parsed details (not raw content)
     local overall_risk
-    overall_risk=$(jq -r '.overall_risk // "info"' < "$tmp_ai_details" 2>/dev/null)
-    [[ "$overall_risk" == "null" || -z "$overall_risk" ]] && overall_risk="info"
+    overall_risk=$(jq -r '.overall_risk // "low"' < "$tmp_ai_details" 2>/dev/null)
+    [[ "$overall_risk" == "null" || -z "$overall_risk" ]] && overall_risk="low"
+    # Remap "info" to "low" — AU-13 findings always represent some disclosure risk
+    [[ "$overall_risk" == "info" ]] && overall_risk="low"
 
     local summary
     summary=$(jq -r '.executive_summary // .summary // .raw_analysis // "AI analysis completed"' < "$tmp_ai_details" 2>/dev/null)

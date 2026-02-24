@@ -98,6 +98,11 @@ generate_html() {
   .finding .desc { color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem; }
   .finding .sev { float: right; margin-left: 0.5rem; }
   .no-results { color: var(--muted); font-style: italic; font-size: 0.9rem; }
+  .source-group details { margin-top: 0.25rem; }
+  .source-group summary { cursor: pointer; font-size: 0.9rem; color: var(--muted); font-weight: 500;
+                           padding: 0.3rem 0; list-style: revert; }
+  .source-group summary:hover { color: var(--text); }
+  .source-group summary .count { font-size: 0.8rem; color: var(--muted); font-weight: 400; }
   .ai-section { margin-top: 1rem; }
   .ai-section h4 { font-size: 0.9rem; color: var(--accent); margin-bottom: 0.5rem;
                     border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
@@ -201,13 +206,18 @@ _html_web_search_section() {
     ' "$jsonl_file" 2>/dev/null)
 
     echo "  <div class=\"source-group\">" >> "$html_file"
-    echo "    <h3>Web Search</h3>" >> "$html_file"
 
     if [[ -z "$findings" ]]; then
+        echo "    <h3>Web Search</h3>" >> "$html_file"
         echo "    <p class=\"no-results\">No results</p>" >> "$html_file"
         echo "  </div>" >> "$html_file"
         return
     fi
+
+    local result_count
+    result_count=$(echo "$findings" | wc -l)
+    echo "    <details>" >> "$html_file"
+    echo "      <summary>Web Search <span class=\"count\">(${result_count} results)</span></summary>" >> "$html_file"
 
     while IFS= read -r rec; do
         [[ -z "$rec" ]] && continue
@@ -248,6 +258,7 @@ _html_web_search_section() {
         echo "    </div>" >> "$html_file"
     done <<< "$findings"
 
+    echo "    </details>" >> "$html_file"
     echo "  </div>" >> "$html_file"
 }
 
@@ -262,13 +273,18 @@ _html_source_section() {
     ' "$jsonl_file" 2>/dev/null)
 
     echo "  <div class=\"source-group\">" >> "$html_file"
-    echo "    <h3>${source_label}</h3>" >> "$html_file"
 
     if [[ -z "$findings" ]]; then
+        echo "    <h3>${source_label}</h3>" >> "$html_file"
         echo "    <p class=\"no-results\">No results</p>" >> "$html_file"
         echo "  </div>" >> "$html_file"
         return
     fi
+
+    local result_count
+    result_count=$(echo "$findings" | wc -l)
+    echo "    <details>" >> "$html_file"
+    echo "      <summary>${source_label} <span class=\"count\">(${result_count} results)</span></summary>" >> "$html_file"
 
     while IFS= read -r rec; do
         [[ -z "$rec" ]] && continue
@@ -336,6 +352,7 @@ _html_source_section() {
         echo "    </div>" >> "$html_file"
     done <<< "$findings"
 
+    echo "    </details>" >> "$html_file"
     echo "  </div>" >> "$html_file"
 }
 
@@ -355,7 +372,9 @@ _html_ai_section() {
 
     local ai_summary ai_risk ai_detailed ai_findings_json ai_patterns_json ai_sources_json
     ai_summary=$(echo "$ai_record" | jq -r '.details.executive_summary // .details.summary // .details.raw_analysis // .description' 2>/dev/null)
-    ai_risk=$(echo "$ai_record" | jq -r '.details.overall_risk // "info"' 2>/dev/null)
+    ai_risk=$(echo "$ai_record" | jq -r '.details.overall_risk // "low"' 2>/dev/null)
+    # Normalize "info" to "low" for display
+    [[ "$ai_risk" == "info" || "$ai_risk" == "null" || -z "$ai_risk" ]] && ai_risk="low"
     ai_detailed=$(echo "$ai_record" | jq -r '.details.detailed_assessment // ""' 2>/dev/null)
     ai_findings_json=$(echo "$ai_record" | jq -c '.details.prioritized_findings // []' 2>/dev/null)
     ai_patterns_json=$(echo "$ai_record" | jq -c '.details.pattern_analysis // []' 2>/dev/null)
@@ -372,7 +391,7 @@ _html_ai_section() {
         return 0
     fi
 
-    local risk_class="info"
+    local risk_class="low"
     case "$ai_risk" in
         critical) risk_class="critical" ;;
         high)     risk_class="high" ;;
