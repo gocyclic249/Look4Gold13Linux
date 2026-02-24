@@ -4,7 +4,7 @@ A bash-based NIST SP 800-53 AU-13 monitoring tool that searches web and threat i
 
 > **CLASSIFICATION NOTICE**
 >
-> **DO NOT** enter Controlled Unclassified Information (CUI), classified, or otherwise sensitive keywords into this tool. Keywords are sent to **third-party commercial APIs** (Brave Search, NIST NVD, AlienVault OTX, xAI) over the public internet. Use only **unclassified, publicly releasable** search terms such as organization names, brand names, product names, and domain names.
+> **DO NOT** enter Controlled Unclassified Information (CUI), classified, or otherwise sensitive keywords into this tool. Keywords are sent to **third-party commercial APIs** (Brave Search, Tavily Search, NIST NVD, AlienVault OTX, xAI) over the public internet. Use only **unclassified, publicly releasable** search terms such as organization names, brand names, product names, and domain names.
 >
 > Before running a scan, verify that:
 > - All keywords in `keywords.conf` are **unclassified and approved for public disclosure**
@@ -20,9 +20,12 @@ For each keyword you configure, Look4Gold13 queries multiple intelligence source
 | Source | What It Searches | API |
 |--------|-----------------|-----|
 | **Brave Search** | Web results using security-focused dork queries (paste sites, code repos, breach databases, threat intel news) | [Brave Search API](https://brave.com/search/api/) |
+| **Tavily Search** | Web results using the same security dork queries as Brave, providing a second independent search source | [Tavily Search API](https://app.tavily.com/home) |
 | **NIST NVD** | CVE vulnerability records matching keywords | [NVD API](https://nvd.nist.gov/developers) |
 | **AlienVault OTX** | Threat intelligence pulses and indicators | [OTX API](https://otx.alienvault.com/api) |
 | **xAI (Grok)** | AI-powered deep analysis of all findings with live web research | [xAI API](https://console.x.ai/) |
+
+Brave and Tavily can be used independently or together. When both are enabled, results are **deduplicated by URL** before being sent to AI analysis — the first occurrence is kept (Brave results take priority), so duplicate URLs from Tavily are removed automatically.
 
 ## Output
 
@@ -30,14 +33,14 @@ Each scan produces:
 
 - **JSONL** — Machine-readable AU-3 compliant audit records (one JSON object per line)
 - **CSV** — Spreadsheet-friendly summary of all findings
-- **HTML** — Dark-themed report with per-keyword AI risk assessments, source findings with clickable links, threat indicators, and remediation guidance
+- **HTML** — Dark-themed report with per-keyword AI risk assessments, combined web search findings (Brave + Tavily), clickable links, threat indicators, and remediation guidance
 
 ## Requirements
 
 - **bash** 4.0+
 - **curl**
 - **jq**
-- At least one API key (Brave, NIST NVD, OTX, or xAI)
+- At least one API key (Brave, Tavily, NIST NVD, OTX, or xAI)
 
 ## Quick Start
 
@@ -64,6 +67,7 @@ All API keys are free tier or have free options:
 | API | Free Tier | Sign Up |
 |-----|-----------|---------|
 | Brave Search | 2,000 queries/month | https://brave.com/search/api/ |
+| Tavily Search | 1,000 credits/month | https://app.tavily.com/home |
 | NIST NVD | 50 requests/30 seconds | https://nvd.nist.gov/developers/request-an-api-key |
 | AlienVault OTX | Unlimited (community) | https://otx.alienvault.com/api |
 | xAI (Grok) | Usage-based credits | https://console.x.ai/ |
@@ -120,9 +124,10 @@ bash look4gold.sh --silent
 |---------|---------|-------------|
 | `OUTPUT_DIR` | `output` | Where scan results are written |
 | `LOG_LEVEL` | `INFO` | Logging verbosity: DEBUG, INFO, WARN, ERROR |
-| `SEARCH_RESULT_COUNT` | `10` | Brave Search results per query |
+| `SEARCH_RESULT_COUNT` | `10` | Search results per query (Brave and Tavily) |
 | `SEARCH_DAYS_BACK` | `7` | Limit results to the last N days |
-| `BRAVE_DORK_MODE` | `security` | `security` uses AU-13 disclosure dorks; `raw` uses plain keyword |
+| `BRAVE_DORK_MODE` | `security` | `security` uses AU-13 disclosure dorks; `raw` uses plain keyword (applies to both Brave and Tavily) |
+| `TAVILY_SEARCH_DEPTH` | `basic` | Tavily search depth: `basic` (1 credit), `advanced` (2 credits) |
 | `XAI_MODEL` | `grok-4-1-fast-reasoning` | xAI model for AI analysis |
 | `XAI_TIMEOUT` | `300` | API timeout in seconds |
 | `XAI_WEB_SEARCH` | `true` | Let Grok search the web during analysis |
@@ -150,10 +155,11 @@ Look4Gold13Linux/
     common.sh           Config loading, logging, API quota checks
     audit.sh            AU-3 compliant audit record formatting
     brave.sh            Brave Search with security-focused dork queries
+    tavily.sh           Tavily Search with shared dork queries + deduplication
     nist.sh             NIST NVD CVE search
     otx.sh              AlienVault OTX threat intelligence
     xai.sh              xAI Grok AI analysis with web search
-    report.sh           CSV and HTML report generation
+    report.sh           CSV and HTML report generation (combined web search view)
   .config/
     settings.conf       General settings
     apis.conf.template  API key template
