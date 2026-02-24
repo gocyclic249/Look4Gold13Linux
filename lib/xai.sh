@@ -238,6 +238,25 @@ $findings_json"
         done < <(grep -n '{' "$tmp_ai_content" | cut -d: -f1)
     fi
 
+    # Attempt 4: streaming parser for near-valid JSON (LLM occasionally drops a bracket)
+    # jq --stream can extract fields that appear BEFORE the first parse error.
+    if [[ -z "$parsed_json" ]]; then
+        local stream_obj
+        stream_obj=$(jq --stream -c \
+            'select(length == 2 and (.[0] | length) == 1 and
+                    (.[0][0] | IN("overall_risk","executive_summary","detailed_assessment")))
+             | {(.[0][0]): .[1]}' < "$tmp_ai_content" 2>/dev/null \
+            | jq -sc 'add // empty')
+        if [[ -n "$stream_obj" ]]; then
+            local has_keys
+            has_keys=$(echo "$stream_obj" | jq 'has("overall_risk") or has("executive_summary")' 2>/dev/null)
+            if [[ "$has_keys" == "true" ]]; then
+                parsed_json="$stream_obj"
+                log_info "xAI: recovered key fields via streaming parser"
+            fi
+        fi
+    fi
+
     if [[ -n "$parsed_json" ]]; then
         ai_details="$parsed_json"
     else
