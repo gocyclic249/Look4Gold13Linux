@@ -63,6 +63,7 @@ source "$SCRIPT_DIR/lib/brave.sh"
 source "$SCRIPT_DIR/lib/tavily.sh"
 source "$SCRIPT_DIR/lib/nist.sh"
 source "$SCRIPT_DIR/lib/otx.sh"
+source "$SCRIPT_DIR/lib/fourchan.sh"
 source "$SCRIPT_DIR/lib/xai.sh"
 source "$SCRIPT_DIR/lib/report.sh"
 
@@ -126,6 +127,7 @@ for keyword in "${KEYWORDS[@]}"; do
     tavily_search "$keyword" || true
     nist_search "$keyword" || true
     otx_search "$keyword" || true
+    fourchan_search "$keyword" || true
 
     # Deduplicate web search results (Brave + Tavily) and run AI analysis
     if [[ "$NO_AI" == "false" && "$DRY_RUN" == "false" && -f "$AUDIT_OUTPUT_FILE" ]]; then

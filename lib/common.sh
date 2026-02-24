@@ -62,16 +62,20 @@ load_config() {
         _CURRENT_LOG_LEVEL="${_LOG_LEVELS[$LOG_LEVEL]}"
     fi
 
-    # Validate at least one API key is set
-    local has_key=false
+    # Validate at least one API key or keyless source is enabled
+    local has_source=false
     for key_var in BRAVE_API_KEY TAVILY_API_KEY NIST_API_KEY OTX_API_KEY XAI_API_KEY; do
         if [[ -n "${!key_var:-}" ]]; then
-            has_key=true
+            has_source=true
             break
         fi
     done
-    if [[ "$has_key" == "false" ]]; then
-        log_error "No API keys configured. Run setup.sh or edit $apis_file."
+    # 4chan archives require no API key — count as a valid source
+    if [[ "${FOURCHAN_ENABLED:-false}" == "true" ]]; then
+        has_source=true
+    fi
+    if [[ "$has_source" == "false" ]]; then
+        log_error "No API keys configured and no keyless sources enabled. Run setup.sh or edit $apis_file."
         return 1
     fi
 }
@@ -224,6 +228,41 @@ check_api_quotas() {
             log_error "xAI: invalid API key (HTTP $xai_code)"
         else
             log_warn "xAI: unexpected HTTP $xai_code"
+        fi
+    fi
+
+    # --- 4chan Archives (no API key) ---
+    if [[ "${FOURCHAN_ENABLED:-false}" == "true" && -n "${FOURCHAN_BOARDS:-}" ]]; then
+        local IFS=','
+        local _fc_entries=($FOURCHAN_BOARDS)
+        unset IFS
+        local fc_reachable=0 fc_total=0
+        for _fc_entry in "${_fc_entries[@]}"; do
+            _fc_entry="$(echo "$_fc_entry" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+            [[ -z "$_fc_entry" ]] && continue
+            local _fc_board="${_fc_entry%%:*}"
+            local _fc_base="${_fc_entry#*:}"
+            [[ -z "$_fc_board" || -z "$_fc_base" ]] && continue
+            fc_total=$((fc_total + 1))
+            local _fc_code
+            _fc_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
+                -H "User-Agent: Look4Gold13/1.0 (AU-13 OSINT Monitor)" \
+                "${_fc_base}/_/api/chan/search/?text=test&boards=${_fc_board}&page=1" \
+                2>/dev/null)
+            if [[ "$_fc_code" == "200" ]]; then
+                log_info "4chan archive: /${_fc_board}/ on ${_fc_base} reachable"
+                fc_reachable=$((fc_reachable + 1))
+            else
+                log_warn "4chan archive: /${_fc_board}/ on ${_fc_base} returned HTTP $_fc_code (may be Cloudflare-blocked)"
+            fi
+        done
+        if [[ "$fc_reachable" -gt 0 ]]; then
+            total=$((total + 1))
+            ready=$((ready + 1))
+            log_info "4chan archives: ${fc_reachable}/${fc_total} boards reachable"
+        elif [[ "$fc_total" -gt 0 ]]; then
+            total=$((total + 1))
+            log_warn "4chan archives: no boards reachable (0/${fc_total})"
         fi
     fi
 
