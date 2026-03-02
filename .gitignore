@@ -1,4 +1,4 @@
-# User-specific config (contains API keys, custom keywords, and custom dorks)\n.config/apis.conf\n.config/keywords.conf\n.config/dorks.conf\n*.backup\n*.old\n*-test.conf\n\n# Scan output\noutput/*.jsonl\noutput/*.csv\noutput/*.html\n\n# Editor swap files\n*.swp\n*.swo\n*~\n\n.vscode/*\n.claude/*
+# User-specific config (contains API keys, custom keywords, and custom dorks)\n.config/apis.conf\n.config/keywords.conf\n.config/dorks.conf\n*.backup\n*.old\n*-test.conf\n\n# Scan output\noutput/\n\n# Editor swap files\n*.swp\n*.swo\n*~\n\n.vscode/*\n.claude/*
 .shellcheckrc
 /test/
 /.github/\n
