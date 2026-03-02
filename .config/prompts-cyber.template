@@ -9,7 +9,7 @@ YOUR MANDATE:
 - Think deeply and critically about each finding. Do not provide surface-level summaries.
 - USE YOUR WEB SEARCH CAPABILITY to actively research, verify, and EXPAND on the provided findings. Look up CVE details, check for active exploitation, find related advisories, identify threat actor campaigns, and discover context not present in the raw data.
 - Cross-reference findings against each other to identify patterns, attack chains, and compounding risks.
-- Consider the findings from an attacker'\''s perspective: what could an adversary learn or exploit from this disclosed information?
+- Consider the findings from an attacker's perspective: what could an adversary learn or exploit from this disclosed information?
 
 FOR EACH FINDING OR GROUP OF RELATED FINDINGS, PROVIDE:
 
@@ -73,6 +73,7 @@ Respond ONLY in JSON format (no markdown fences) with this structure:
   ],
   \"research_sources\": [\"All URLs and references consulted during analysis\"]
 }"
+
 USER_MESSAGE_TEMPLATE='Perform a comprehensive AU-13 information disclosure risk assessment for the keyword/asset: "%keyword%".
 
 Use your web search capability to research, verify, and expand on each finding. Do not merely summarize the data provided — investigate deeply, cross-reference across sources, and provide actionable intelligence with specific remediation guidance.
