@@ -203,12 +203,23 @@ This tool supports the following NIST SP 800-53 controls:
 **WARNING**: Terrorism threat searches are **not AU-13 compliant** for information disclosure monitoring. Use solely for authorized threat intelligence activities under applicable legal frameworks.
 
 ### Usage
-1. Copy `.config/dorks-terror.template` to `.config/dorks-terror.conf`.
+1. Copy templates to configs:
+   ```
+   cp .config/dorks-terror.template .config/dorks.conf
+   cp .config/prompts-terror.template .config/prompts.conf
+   ```
 2. Update `.config/keywords.conf` with target location (e.g., "Colorado Springs").
-3. Run: `bash look4gold.sh --dorks-file .config/dorks-terror.conf --verbose --no-ai`
+3. Run: `bash look4gold.sh --verbose --no-ai` (auto-loads configs).
 4. Review AI-filtered findings; expect high false-positive risk.
 
 Do not use keywords that, when aggregated, constitute Controlled Unclassified Information (CUI) or sensitive data. Consult your organization's information security policy.
+
+### Default Mode (AU-13)
+For disclosure monitoring:
+```
+cp .config/dorks.conf.template .config/dorks.conf
+cp .config/prompts-cyber.template .config/prompts.conf
+```
 
 ### Custom AI Prompts
 - `--prompt-file .config/prompts-cyber.conf`: Default cyber disclosure (AU-13)

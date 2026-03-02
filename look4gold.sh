@@ -118,6 +118,11 @@ load_keywords || exit 1
         # shellcheck source=/dev/null
         source "$PROMPT_FILE"
         log_info "Custom prompts loaded from $PROMPT_FILE"
+    elif [[ -f "$CONFIG_DIR/prompts.conf" ]]; then
+        # Auto-load prompts.conf if present
+        # shellcheck source=/dev/null
+        source "$CONFIG_DIR/prompts.conf"
+        log_info "Custom prompts loaded from $CONFIG_DIR/prompts.conf"
     fi
 
 # Determine output directory
