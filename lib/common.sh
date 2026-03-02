@@ -96,10 +96,12 @@ load_keywords() {
         # Skip comments and blank lines
         [[ -z "$line" || "$line" == \#* ]] && continue
         # Security: Reject keywords with shell metacharacters to prevent injection
-        if [[ "$line" == *";"* || "$line" == *"&"* || "$line" == *"|"* || "$line" == *"<"* || "$line" == *">"* || "$line" == *"$"* || "$line" == *"`"* || "$line" =~ [\\] ]]; then
+        case "$line" in
+          *";"* | *"&"* | *"|"* | *"<"* | *">"* | *"$"* | *"`"* | *"\\"* )
             log_warn "Skipping keyword with dangerous characters: '$line'"
             continue
-        fi
+            ;;
+        esac
         KEYWORDS+=("$line")
     done < "$keywords_file"
 
