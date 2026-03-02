@@ -50,6 +50,7 @@ while [[ $# -gt 0 ]]; do
         --output-dir)   OUTPUT_DIR="$2"; shift 2 ;;
         --keywords-file) KEYWORDS_FILE="$2"; shift 2 ;;
         --dorks-file)   DORKS_FILE="$2"; shift 2 ;;
+        --prompt-file)  PROMPT_FILE="$2"; shift 2 ;;
         --no-ai)        NO_AI=true; shift ;;
         --dry-run)      DRY_RUN=true; shift ;;
         --verbose)      VERBOSE=true; shift ;;
@@ -106,10 +107,18 @@ fi
 load_keywords || exit 1
 
 # Set dorks file if specified
-if [[ -n "$DORKS_FILE" ]]; then
-    export DORKS_FILE
-fi
-load_dorks || exit 1
+    if [[ -n "$DORKS_FILE" ]]; then
+        export DORKS_FILE
+    fi
+    load_dorks || exit 1
+
+    # Load prompt file if specified (for custom AI prompts)
+    if [[ -n "${PROMPT_FILE:-}" ]]; then
+        _validate_path "--prompt-file" "$PROMPT_FILE"
+        # shellcheck source=/dev/null
+        source "$PROMPT_FILE"
+        log_info "Custom prompts loaded from $PROMPT_FILE"
+    fi
 
 # Determine output directory
 # CLI --output-dir takes priority, then settings.conf OUTPUT_DIR, then default "output"

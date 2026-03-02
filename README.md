@@ -210,6 +210,12 @@ This tool supports the following NIST SP 800-53 controls:
 
 Do not use keywords that, when aggregated, constitute Controlled Unclassified Information (CUI) or sensitive data. Consult your organization's information security policy.
 
+### Custom AI Prompts
+- `--prompt-file .config/prompts-cyber.conf`: Default cyber disclosure (AU-13)
+- `--prompt-file .config/prompts-terror.conf`: Threat intel mode
+
+Copy templates to .conf files and customize.
+
 ## License
 
 See [LICENSE](LICENSE) for details.
