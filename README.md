@@ -94,11 +94,11 @@ Options:
 
 ### Detailed Usage Examples
 
-#### Cyber Mode (AU-13 Disclosure Monitoring)
+#### Information Disclosure Mode (AU-13 Compliant)
 ```bash
 # Setup
 cp .config/dorks-disclosure.template .config/dorks.conf
-cp .config/prompts-cyber.template .config/prompts.conf
+cp .config/prompts-disclosure.template .config/prompts.conf
 echo "Dell" > .config/keywords.conf
 
 # Run with AI analysis
@@ -178,7 +178,7 @@ All configuration is managed via template files in `.config/`. Copy the desired 
 |----------|-------------|---------|
 | `dorks-disclosure.template` | `dorks.conf` | AU-13 disclosure dorks |
 | `dorks-threat.template` | `dorks.conf` | Terrorism threat dorks |
-| `prompts-cyber.template` | `prompts.conf` | Cyber security AI prompts |
+| `prompts-disclosure.template` | `prompts.conf` | Information disclosure AI prompts (AU-13) |
 | `prompts-threat.template` | `prompts.conf` | Threat intel AI prompts |
 | `keywords.conf.template` | `keywords.conf` | Example keywords |
 | `apis.conf.template` | `apis.conf` | API key placeholders |
@@ -186,7 +186,7 @@ All configuration is managed via template files in `.config/`. Copy the desired 
 **Copy Example**:
 ```
 cp .config/dorks-disclosure.template .config/dorks.conf
-cp .config/prompts-cyber.template .config/prompts.conf
+cp .config/prompts-disclosure.template .config/prompts.conf
 ```
 
 ### Settings File (.config/settings.conf)
@@ -328,13 +328,13 @@ This tool supports the following NIST SP 800-53 controls:
 
 Look4Gold13 supports two primary modes:
 
-### 1. Cyber Security / Information Disclosure Mode (AU-13 Compliant)
+### 1. Information Disclosure Mode (AU-13 Compliant) (AU-13 Compliant)
 **Purpose**: Monitor for unauthorized disclosure of organizational information (NIST SP 800-53 AU-13).
 
 **Setup**:
 ```
 cp .config/dorks-disclosure.template .config/dorks.conf
-cp .config/prompts-cyber.template .config/prompts.conf
+cp .config/prompts-disclosure.template .config/prompts.conf
 ```
 
 **Use Case**: Scan for leaked credentials, internal docs, CVE exposures for company assets.
@@ -355,12 +355,12 @@ cp .config/prompts-threat.template .config/prompts.conf
 ### Switching Modes
 - Copy the desired `.template` files to `.config/dorks.conf` and `.config/prompts.conf`.
 - The script auto-loads these configs on startup.
-- Keywords in `.config/keywords.conf` should match the mode (org names for cyber, locations for threat).
+- Keywords in `.config/keywords.conf` should match the mode (org/asset names for disclosure, locations for threat).
 
 **Security Note**: Do not use keywords that aggregate to CUI or sensitive data. Consult your org's policies.
 
 ### Custom AI Prompts
-- `--prompt-file .config/prompts-cyber.conf`: Default cyber disclosure (AU-13)
+- `--prompt-file .config/prompts-disclosure.conf`: Default cyber disclosure (AU-13)
 - `--prompt-file .config/prompts-terror.conf`: Threat intel mode
 
 Copy templates to .conf files and customize.
