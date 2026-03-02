@@ -95,13 +95,7 @@ load_keywords() {
         line="$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
         # Skip comments and blank lines
         [[ -z "$line" || "$line" == \#* ]] && continue
-        # Security: Reject keywords with shell metacharacters to prevent injection
-        case "$line" in
-          *";"* | *"&"* | *"|"* | *"<"* | *">"* | *"$"* | *"`"* | *"\\"* )
-            log_warn "Skipping keyword with dangerous characters: '$line'"
-            continue
-            ;;
-        esac
+
         KEYWORDS+=("$line")
     done < "$keywords_file"
 
