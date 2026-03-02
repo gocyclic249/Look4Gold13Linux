@@ -79,12 +79,12 @@ _tavily_query() {
         }')
 
     local response http_code body
-    response=$(echo "$request_body" | curl -s -w "\n%{http_code}" \
+    response=$(retry_curl curl -s -w "\n%{http_code}" \
+        --max-time "${API_TIMEOUT:-30}" --max-redirs 5 \
         -X POST \
-        --max-time 30 --max-redirs 5 \
         -H "Content-Type: application/json" \
         -H "Authorization: Bearer $TAVILY_API_KEY" \
-        -d @- \
+        -d "{\"query\":\"${query}\",\"max_results\":${count},\"search_depth\":\"${TAVILY_SEARCH_DEPTH:-basic}\"}" \
         "https://api.tavily.com/search" \
         2>/dev/null)
 
