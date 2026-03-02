@@ -2,3 +2,5 @@
 .shellcheckrc
 /test/
 /.github/\n
+.config/apis.conf
+.config/prompts.conf
