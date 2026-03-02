@@ -36,7 +36,9 @@ xai_analyze() {
         log_debug "Custom prompts loaded from $PROMPT_FILE"
     fi
     system_prompt="${SYSTEM_PROMPT:-You are an expert cybersecurity analyst... [default fallback]}"
-    user_message=$(printf "${USER_MESSAGE_TEMPLATE:-Perform a comprehensive AU-13... %findings_json}" "keyword=$keyword" "findings_json=$findings_json")
+    user_message="${USER_MESSAGE_TEMPLATE:-Perform a comprehensive AU-13... %findings_json}"
+    user_message="${user_message//%keyword%/$keyword}"
+    user_message="${user_message//%findings_json%/$findings_json}"
 
     local user_message
     user_message="Perform a comprehensive AU-13 information disclosure risk assessment for the keyword/asset: \"${keyword}\".
