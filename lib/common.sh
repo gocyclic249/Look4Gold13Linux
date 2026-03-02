@@ -96,7 +96,7 @@ load_keywords() {
         # Skip comments and blank lines
         [[ -z "$line" || "$line" == \#* ]] && continue
         # Security: Reject keywords with shell metacharacters to prevent injection
-        if [[ "$line" =~ [;&|<>$\`\\] ]]; then
+        if [[ "$line" == *";"* || "$line" == *"&"* || "$line" == *"|"* || "$line" == *"<"* || "$line" == *">"* || "$line" == *"$"* || "$line" == *"`"* || "$line" =~ [\\] ]]; then
             log_warn "Skipping keyword with dangerous characters: '$line'"
             continue
         fi
