@@ -26,10 +26,10 @@ nist_search() {
     pub_start="$(date -u -d "${days_back} days ago" '+%Y-%m-%dT%H:%M:%S.000')"
 
     local response http_code body
-    response=$(retry_curl curl -s -w "\n%{http_code}" \
-        --max-time "${API_TIMEOUT:-30}" --max-redirs 5 \
+    response=$(curl -s -w "\n%{http_code}" \
+        --max-time 30 --max-redirs 5 \
         -H "apiKey: $NIST_API_KEY" \
-        "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${encoded_keyword}&resultsPerPage=20&pubStartDate=${from_date}T00:00:00.000" \
+        "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${encoded_keyword}&pubStartDate=${pub_start}&pubEndDate=${pub_end}" \
         2>/dev/null)
 
     http_code=$(echo "$response" | tail -n1)

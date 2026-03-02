@@ -20,10 +20,10 @@ otx_search() {
     fi
 
     local response http_code body
-    response=$(retry_curl curl -s -w "\n%{http_code}" \
-        --max-time "${API_TIMEOUT:-30}" --max-redirs 5 \
+    response=$(curl -s -w "\n%{http_code}" \
+        --max-time 30 --max-redirs 5 \
         -H "X-OTX-API-KEY: $OTX_API_KEY" \
-        "https://otx.alienvault.com/api/v1/indicators/export?type=domain&include_inactive=0&limit=50&q=${encoded_keyword}" \
+        "https://otx.alienvault.com/api/v1/search/pulses?q=${encoded_keyword}" \
         2>/dev/null)
 
     http_code=$(echo "$response" | tail -n1)

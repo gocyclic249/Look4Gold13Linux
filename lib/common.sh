@@ -95,6 +95,11 @@ load_keywords() {
         line="$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
         # Skip comments and blank lines
         [[ -z "$line" || "$line" == \#* ]] && continue
+        # Security: Reject keywords with shell metacharacters to prevent injection
+        if [[ "$line" =~ [;&|<>$\`\\] ]]; then
+            log_warn "Skipping keyword with dangerous characters: '$line'"
+            continue
+        fi
         KEYWORDS+=("$line")
     done < "$keywords_file"
 
@@ -151,6 +156,29 @@ url_encode() {
     printf '%s' "$string" | jq -sRr @uri
 }
 
+# Retry function with exponential backoff for API calls
+retry_curl() {
+    local max_attempts="${RETRY_MAX_ATTEMPTS:-3}"
+    local attempt=1
+    local exit_code
+    while (( attempt <= max_attempts )); do
+        log_debug "API call attempt $attempt/$max_attempts"
+        "$@"  # Run the curl command as passed
+        exit_code=$?
+        if (( exit_code == 0 )); then
+            return 0
+        fi
+        if (( attempt < max_attempts )); do
+            local delay=$(( 2 ** attempt ))
+            log_warn "API call failed (exit $exit_code), retrying in $delay seconds..."
+            sleep "$delay"
+        fi
+        (( attempt++ ))
+    done
+    log_error "API call failed after $max_attempts attempts"
+    return "$exit_code"
+}
+
 # Check API key validity and report remaining quotas before scanning
 check_api_quotas() {
     local no_ai="${1:-false}"
@@ -175,8 +203,18 @@ check_api_quotas() {
 
         if [[ "$brave_code" == "200" || "$brave_code" == "429" ]]; then
             local remaining limit
-            remaining=$(grep -i '^x-ratelimit-remaining:' "$brave_hdr_file" | head -1 | sed 's/.*: *//' | tr -d '\r' | cut -d',' -f2 | tr -d ' ')
-            limit=$(grep -i '^x-ratelimit-limit:' "$brave_hdr_file" | head -1 | sed 's/.*: *//' | tr -d '\r' | cut -d',' -f2 | tr -d ' ')
+            # Brave headers: x-ratelimit-remaining: monthly=0,daily=100
+            # Parse monthly first, fallback to daily
+            local remaining_line limit_line
+            remaining_line=$(grep -i '^x-ratelimit-remaining:' "$brave_hdr_file" | head -1 | sed 's/.*: *//' | tr -d '\r')
+            limit_line=$(grep -i '^x-ratelimit-limit:' "$brave_hdr_file" | head -1 | sed 's/.*: *//' | tr -d '\r')
+            remaining=$(echo "$remaining_line" | sed -n 's/.*monthly=\\([0-9]*\\).*/\\1/p' | head -1)
+            limit=$(echo "$limit_line" | sed -n 's/.*monthly=\\([0-9]*\\).*/\\1/p' | head -1)
+            if [[ -z "$remaining" || "$remaining" == "$remaining_line" ]]; then
+                remaining=$(echo "$remaining_line" | sed -n 's/.*daily=\\([0-9]*\\).*/\\1/p' | head -1)
+                limit=$(echo "$limit_line" | sed -n 's/.*daily=\\([0-9]*\\).*/\\1/p' | head -1)
+            fi
+            log_debug "Brave remaining raw: $remaining_line limit raw: $limit_line (parsed $remaining/$limit)"
             if [[ -n "$remaining" && -n "$limit" ]]; then
                 log_info "Brave Search: ${remaining}/${limit} monthly requests remaining"
                 if [[ "$remaining" == "0" ]]; then
