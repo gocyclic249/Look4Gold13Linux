@@ -1,0 +1,49 @@
+# Look4Gold13 Dork Configuration
+# Customize search dork groups for your organization's threat profile.
+# Copy this file to dorks.conf and edit as needed:
+#   cp .config/dorks.conf.template .config/dorks.conf
+#
+# FORMAT:
+#   - Lines starting with '#' are comments (ignored)
+#   - Blank lines are ignored
+#   - Section headers: [disclosure], [breach], [chan]
+#   - Each non-comment line within a section is one dork group
+#   - Each dork group becomes a separate API call per keyword
+#
+# HOW DORK GROUPS ARE USED:
+#   [disclosure] — Wrapped as: "keyword" (dork group)
+#       Targets paste sites, code repos, file shares where leaked data appears.
+#   [breach] — Wrapped as: "keyword" dork group
+#       Searches for breach/threat keywords alongside your keyword.
+#   [chan] — Wrapped as: "keyword" (dork group)
+#       Scoped to 4chan archive sites (requires FOURCHAN_ENABLED=true).
+#
+# TIPS:
+#   - Use "OR" between site: operators to batch multiple sites per API call
+#   - More groups = more API calls per keyword (budget accordingly)
+#   - Add industry-specific paste sites, forums, or leak platforms relevant to you
+#   - Remove groups you don't need to conserve API quota
+
+# --- Disclosure dork groups ---
+# Sites where leaked content commonly appears (paste sites, code repos, file shares)
+[disclosure]
+site:pastebin.com OR site:github.com OR site:gist.github.com OR site:reddit.com
+site:dropbox.com/s/ OR site:docs.google.com OR site:archive.org OR site:paste.ee
+site:ghostbin.com OR site:dpaste.org OR site:rentry.co OR site:justpaste.it
+site:controlc.com OR site:privatebin.net OR site:0bin.net OR site:hastebin.com OR site:ideone.com
+github code exposed repository
+
+# --- Breach/threat dork groups ---
+# Security news, intel sources, and breach-related keywords
+[breach]
+breach data leak compromised
+ransomware attack security incident
+credential stolen dark web
+site:haveibeenpwned.com OR site:databreaches.net OR site:bleepingcomputer.com OR site:krebsonsecurity.com
+breachforums breach leaked database
+
+# --- 4chan archive dork groups ---
+# Archive sites searched via site: dorks (only used when FOURCHAN_ENABLED=true)
+[chan]
+site:archive.4plebs.org OR site:desuarchive.org
+site:archived.moe OR site:thebarchive.com

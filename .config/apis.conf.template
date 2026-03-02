@@ -1,0 +1,18 @@
+# Look4Gold13 API Keys
+# Copy this file to apis.conf and fill in your keys.
+# NEVER commit apis.conf to version control.
+
+# Brave Search API — https://brave.com/search/api/
+BRAVE_API_KEY=""
+
+# Tavily Search API — https://app.tavily.com/home
+TAVILY_API_KEY=""
+
+# NIST NVD API — https://nvd.nist.gov/developers/request-an-api-key
+NIST_API_KEY=""
+
+# AlienVault OTX API — https://otx.alienvault.com/api
+OTX_API_KEY=""
+
+# xAI (Grok) API — https://console.x.ai/
+XAI_API_KEY=""
