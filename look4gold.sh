@@ -138,20 +138,20 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 
-# Create per-scan folder with ISO date-time
-SCAN_FOLDER="$OUTPUT_DIR/$(date -u '+%Y-%m-%dT%H-%M-%S')"
+# Create per-scan folder with date-time
+SCAN_FOLDER="$OUTPUT_DIR/$(date -u '+%Y%m%d%H%M%S')"
 mkdir -p "$SCAN_FOLDER"
 chmod 700 "$SCAN_FOLDER" 2>/dev/null || true
 
-# Create AU13 files with restrictive permissions
-AUDIT_OUTPUT_FILE="$SCAN_FOLDER/AU13.jsonl"
+# Create scan files with restrictive permissions
+AUDIT_OUTPUT_FILE="$SCAN_FOLDER/scan.jsonl"
 export AUDIT_OUTPUT_FILE
 touch "$AUDIT_OUTPUT_FILE"
 chmod 600 "$AUDIT_OUTPUT_FILE"
 
 log_info "Look4Gold13 — AU-13 Information Disclosure Monitor"
 log_info "Scan folder: $SCAN_FOLDER"
-log_info "AU13 JSONL: $AUDIT_OUTPUT_FILE"
+log_info "Scan JSONL: $AUDIT_OUTPUT_FILE"
 log_info "Keywords: ${#KEYWORDS[@]}"
 log_info "Dry run: $DRY_RUN"
 [[ "$NO_AI" == "true" ]] && log_info "AI analysis: disabled"
