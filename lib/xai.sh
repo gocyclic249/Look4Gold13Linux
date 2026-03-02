@@ -123,6 +123,7 @@ $findings_json"
     tmp_ai_content=$(mktemp)
     tmp_ai_details=$(mktemp)
     # Single trap cleans up ALL temp files on function return (normal or error)
+    # shellcheck disable=SC2064
     trap "rm -f '$tmp_system' '$tmp_user' '$tmp_response' '$tmp_body' '$tmp_ai_content' '$tmp_ai_details'" RETURN
 
     printf '%s' "$system_prompt" > "$tmp_system"

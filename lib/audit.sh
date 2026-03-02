@@ -28,6 +28,7 @@ emit_audit_record() {
     local tmp_desc tmp_det
     tmp_desc=$(mktemp)
     tmp_det=$(mktemp)
+    # shellcheck disable=SC2064
     trap "rm -f '$tmp_desc' '$tmp_det'" RETURN
 
     printf '%s' "$description" > "$tmp_desc"

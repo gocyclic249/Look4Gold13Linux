@@ -123,16 +123,21 @@ if [[ -z "$OUTPUT_DIR" ]]; then
 fi
 
 mkdir -p "$OUTPUT_DIR"
-chmod 700 "$OUTPUT_DIR" 2>/dev/null || true
 
-# Create output file with restrictive permissions (scan results may contain sensitive findings)
-AUDIT_OUTPUT_FILE="$OUTPUT_DIR/scan_$(date -u '+%Y%m%d_%H%M%S').jsonl"
+# Create per-scan folder with ISO date-time
+SCAN_FOLDER="$OUTPUT_DIR/$(date -u '+%Y-%m-%dT%H-%M-%S')"
+mkdir -p "$SCAN_FOLDER"
+chmod 700 "$SCAN_FOLDER" 2>/dev/null || true
+
+# Create AU13 files with restrictive permissions
+AUDIT_OUTPUT_FILE="$SCAN_FOLDER/AU13.jsonl"
 export AUDIT_OUTPUT_FILE
 touch "$AUDIT_OUTPUT_FILE"
 chmod 600 "$AUDIT_OUTPUT_FILE"
 
 log_info "Look4Gold13 — AU-13 Information Disclosure Monitor"
-log_info "Output: $AUDIT_OUTPUT_FILE"
+log_info "Scan folder: $SCAN_FOLDER"
+log_info "AU13 JSONL: $AUDIT_OUTPUT_FILE"
 log_info "Keywords: ${#KEYWORDS[@]}"
 log_info "Dry run: $DRY_RUN"
 [[ "$NO_AI" == "true" ]] && log_info "AI analysis: disabled"
@@ -214,6 +219,7 @@ if [[ "$SILENT" != "true" ]]; then
     echo "  Records:    $_RECORD_COUNT"
     echo "  Findings:   $_FINDING_COUNT"
     echo "  JSONL:      $AUDIT_OUTPUT_FILE"
+    echo "  Scan folder: $SCAN_FOLDER"
     [[ -n "$CSV_REPORT" ]]  && echo "  CSV:        $CSV_REPORT"
     [[ -n "$HTML_REPORT" ]] && echo "  HTML:       $HTML_REPORT"
     echo "========================================="
