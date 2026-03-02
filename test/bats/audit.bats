@@ -9,6 +9,9 @@ setup() {
   source "${SCRIPT_DIR}/lib/audit.sh"
   export AUDIT_OUTPUT_FILE="${BATS_TMPDIR}/audit.jsonl"
   touch "$AUDIT_OUTPUT_FILE"
+  # Initialize counters
+  _RECORD_COUNT=0
+  _FINDING_COUNT=0
 }
 
 teardown() {
