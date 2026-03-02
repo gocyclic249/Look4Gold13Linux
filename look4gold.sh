@@ -50,6 +50,7 @@ while [[ $# -gt 0 ]]; do
         --output-dir)   OUTPUT_DIR="$2"; shift 2 ;;
         --keywords-file) KEYWORDS_FILE="$2"; shift 2 ;;
         --dorks-file)   DORKS_FILE="$2"; shift 2 ;;
+        --prompt-file)  PROMPT_FILE="$2"; shift 2 ;;
         --no-ai)        NO_AI=true; shift ;;
         --dry-run)      DRY_RUN=true; shift ;;
         --verbose)      VERBOSE=true; shift ;;
@@ -106,10 +107,23 @@ fi
 load_keywords || exit 1
 
 # Set dorks file if specified
-if [[ -n "$DORKS_FILE" ]]; then
-    export DORKS_FILE
-fi
-load_dorks || exit 1
+    if [[ -n "$DORKS_FILE" ]]; then
+        export DORKS_FILE
+    fi
+    load_dorks || exit 1
+
+    # Load prompt file if specified (for custom AI prompts)
+    if [[ -n "${PROMPT_FILE:-}" ]]; then
+        _validate_path "--prompt-file" "$PROMPT_FILE"
+        # shellcheck source=/dev/null
+        source "$PROMPT_FILE"
+        log_info "Custom prompts loaded from $PROMPT_FILE"
+    elif [[ -f "$CONFIG_DIR/prompts.conf" ]]; then
+        # Auto-load prompts.conf if present
+        # shellcheck source=/dev/null
+        source "$CONFIG_DIR/prompts.conf"
+        log_info "Custom prompts loaded from $CONFIG_DIR/prompts.conf"
+    fi
 
 # Determine output directory
 # CLI --output-dir takes priority, then settings.conf OUTPUT_DIR, then default "output"
@@ -124,20 +138,20 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 
-# Create per-scan folder with ISO date-time
-SCAN_FOLDER="$OUTPUT_DIR/$(date -u '+%Y-%m-%dT%H-%M-%S')"
+# Create per-scan folder with date-time
+SCAN_FOLDER="$OUTPUT_DIR/$(date -u '+%Y%m%d%H%M%S')"
 mkdir -p "$SCAN_FOLDER"
 chmod 700 "$SCAN_FOLDER" 2>/dev/null || true
 
-# Create AU13 files with restrictive permissions
-AUDIT_OUTPUT_FILE="$SCAN_FOLDER/AU13.jsonl"
+# Create scan files with restrictive permissions
+AUDIT_OUTPUT_FILE="$SCAN_FOLDER/scan.jsonl"
 export AUDIT_OUTPUT_FILE
 touch "$AUDIT_OUTPUT_FILE"
 chmod 600 "$AUDIT_OUTPUT_FILE"
 
 log_info "Look4Gold13 — AU-13 Information Disclosure Monitor"
 log_info "Scan folder: $SCAN_FOLDER"
-log_info "AU13 JSONL: $AUDIT_OUTPUT_FILE"
+log_info "Scan JSONL: $AUDIT_OUTPUT_FILE"
 log_info "Keywords: ${#KEYWORDS[@]}"
 log_info "Dry run: $DRY_RUN"
 [[ "$NO_AI" == "true" ]] && log_info "AI analysis: disabled"
