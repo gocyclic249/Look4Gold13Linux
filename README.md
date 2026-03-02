@@ -198,6 +198,18 @@ This tool supports the following NIST SP 800-53 controls:
 - **AU-2 (Event Logging)** — Identifies events requiring logging (web searches, vulnerability checks, threat intel queries, AI analysis)
 - **AU-3 (Content of Audit Records)** — Each JSONL record contains: timestamp, event type, source, keyword, outcome, severity, description, details, control reference, and scan ID
 
+## Threat Intelligence Mode (Non-AU-13)
+
+**WARNING**: Terrorism threat searches are **not AU-13 compliant** for information disclosure monitoring. Use solely for authorized threat intelligence activities under applicable legal frameworks.
+
+### Usage
+1. Copy `.config/dorks-terror.template` to `.config/dorks-terror.conf`.
+2. Update `.config/keywords.conf` with target location (e.g., "Colorado Springs").
+3. Run: `bash look4gold.sh --dorks-file .config/dorks-terror.conf --verbose --no-ai`
+4. Review AI-filtered findings; expect high false-positive risk.
+
+Do not use keywords that, when aggregated, constitute Controlled Unclassified Information (CUI) or sensitive data. Consult your organization's information security policy.
+
 ## License
 
 See [LICENSE](LICENSE) for details.
