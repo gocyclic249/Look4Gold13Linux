@@ -1,0 +1,6 @@
+# .shellcheckrc - Shellcheck configuration for Look4Gold13
+# Ignore sourced files (SC1090)
+disable=SC1090,SC2034,SC2155
+
+# Source-only script
+source-path=SC1090

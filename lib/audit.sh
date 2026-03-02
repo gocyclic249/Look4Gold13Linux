@@ -28,7 +28,7 @@ emit_audit_record() {
     local tmp_desc tmp_det
     tmp_desc=$(mktemp)
     tmp_det=$(mktemp)
-    trap "rm -f '$tmp_desc' '$tmp_det'" RETURN
+    trap 'rm -f "$tmp_desc" "$tmp_det"' RETURN
 
     printf '%s' "$description" > "$tmp_desc"
     printf '%s' "${details:-null}" > "$tmp_det"
