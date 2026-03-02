@@ -92,54 +92,169 @@ Options:
   -h, --help           Show this help message
 ```
 
-### Examples
+### Detailed Usage Examples
 
+#### Cyber Mode (AU-13 Disclosure Monitoring)
 ```bash
-# Standard scan
-bash look4gold.sh
+# Setup
+cp .config/dorks-disclosure.template .config/dorks.conf
+cp .config/prompts-cyber.template .config/prompts.conf
+echo "Dell" > .config/keywords.conf
 
-# Validate config without making API calls
+# Run with AI analysis
+bash look4gold.sh --verbose
+
+# Dry-run validation
 bash look4gold.sh --dry-run
-
-# Skip AI analysis, show debug output
-bash look4gold.sh --no-ai --verbose
-
-# Custom output location
-bash look4gold.sh --output-dir /tmp/scan-results
-
-# Cron-friendly (no stdout/stderr, only writes files)
-bash look4gold.sh --silent
 ```
 
-### Cron Job
-
+#### Threat Mode (Terrorism Monitoring)
 ```bash
-# Run daily at 06:00 UTC
+# Setup
+cp .config/dorks-threat.template .config/dorks.conf
+cp .config/prompts-threat.template .config/prompts.conf
+echo "Colorado Springs" > .config/keywords.conf
+
+# Run without AI (saves credits)
+bash look4gold.sh --no-ai --verbose
+```
+
+#### Advanced Options
+```bash
+# Custom output dir
+bash look4gold.sh --output-dir /secure/scans
+
+# Force specific dorks/prompts
+bash look4gold.sh --dorks-file .config/dorks-threat.template --prompt-file .config/prompts-threat.template
+
+# Cron job (silent, no logs to stdout)
+0 6 * * * /path/to/look4gold.sh --silent
+```
+
+#### Output Structure
+Scans create folders: `output/YYYYMMDDHHMMSS/`
+- `scan.jsonl`: Audit records
+- `scan.csv`: Spreadsheet summary
+- `scan.html`: Web report
+
+**Viewing Results**:
+```bash
+# Latest scan folder
+FOLDER=$(ls -td output/*/ | head -1)
+cat "$FOLDER/scan.jsonl" | jq '.event_type, .outcome, .keyword'
+open "$FOLDER/scan.html"  # On macOS
+```
+
+### Automation & Scheduling
+
+#### Cron Job Example
+```bash
+# Run daily at 06:00 UTC (silent mode for logs)
 0 6 * * * /path/to/Look4Gold13Linux/look4gold.sh --silent
 ```
 
-## Configuration
+#### Output File Structure
+Scans create timestamped folders: `output/YYYYMMDDHHMMSS/`
+- `scan.jsonl`: AU-3 audit records
+- `scan.csv`: Spreadsheet summary
+- `scan.html`: Web report with AI analysis
 
-### .config/settings.conf
+#### Log Analysis
+Check logs for issues:
+```bash
+# Recent scans
+ls -la output/ | tail -10
+
+# View latest scan logs
+tail -f output/$(ls -td output/*/ | head -1)/scan.jsonl | jq '.event_type, .outcome'
+```
+
+## Detailed Configuration
+
+### Template Files
+All configuration is managed via template files in `.config/`. Copy the desired template to the config file name for auto-loading.
+
+| Template | Config File | Purpose |
+|----------|-------------|---------|
+| `dorks-disclosure.template` | `dorks.conf` | AU-13 disclosure dorks |
+| `dorks-threat.template` | `dorks.conf` | Terrorism threat dorks |
+| `prompts-cyber.template` | `prompts.conf` | Cyber security AI prompts |
+| `prompts-threat.template` | `prompts.conf` | Threat intel AI prompts |
+| `keywords.conf.template` | `keywords.conf` | Example keywords |
+| `apis.conf.template` | `apis.conf` | API key placeholders |
+
+**Copy Example**:
+```
+cp .config/dorks-disclosure.template .config/dorks.conf
+cp .config/prompts-cyber.template .config/prompts.conf
+```
+
+### Settings File (.config/settings.conf)
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `OUTPUT_DIR` | `output` | Where scan results are written |
+| `OUTPUT_DIR` | `output` | Where scan results are written (relative to script dir) |
 | `LOG_LEVEL` | `INFO` | Logging verbosity: DEBUG, INFO, WARN, ERROR |
-| `SEARCH_RESULT_COUNT` | `10` | Search results per query (Brave and Tavily) |
-| `SEARCH_DAYS_BACK` | `7` | Limit results to the last N days |
-| `BRAVE_DORK_MODE` | `security` | `security` uses AU-13 disclosure dorks; `raw` uses plain keyword (applies to both Brave and Tavily) |
-| `TAVILY_SEARCH_DEPTH` | `basic` | Tavily search depth: `basic` (1 credit), `advanced` (2 credits) |
-| `XAI_MODEL` | `grok-4-1-fast-reasoning` | xAI model for AI analysis |
+| `SEARCH_RESULT_COUNT` | `10` | Max results per query (Brave/Tavily) |
+| `SEARCH_DAYS_BACK` | `7` | Limit results to last N days |
+| `BRAVE_DORK_MODE` | `security` | `security` (dorks) or `raw` (plain keyword) |
+| `TAVILY_SEARCH_DEPTH` | `basic` | Search depth: basic/advanced |
+| `XAI_MODEL` | `grok-4-1-fast-reasoning` | xAI model for analysis |
 | `XAI_TIMEOUT` | `300` | API timeout in seconds |
-| `XAI_WEB_SEARCH` | `true` | Let Grok search the web during analysis |
-| `SCAN_FREQUENCY` | `on_demand` | Metadata label for audit records |
-| `FOURCHAN_ENABLED` | `true` | Enable 4chan archive search (via web search dorks; requires Brave or Tavily API key) |
+| `XAI_WEB_SEARCH` | `true` | Enable Grok web search |
+| `RETRY_MAX_ATTEMPTS` | `3` | API retry attempts |
+| `API_TIMEOUT` | `30` | General API timeout |
+| `SCAN_FREQUENCY` | `on_demand` | Audit metadata label |
+| `FOURCHAN_ENABLED` | `true` | Enable 4chan archive search |
 
-### .config/keywords.conf
+### Keywords File (.config/keywords.conf)
 
-One keyword or phrase per line. Comments (`#`) and blank lines are ignored.
+One keyword per line. Comments (`#`) and blanks ignored. Sanitized for shell safety.
 
+**Cyber Mode Examples**:
+```
+Acme Corporation
+acme-corp.com
+AcmeTech Router X500
+```
+
+**Threat Mode Examples**:
+```
+New York City
+Washington DC
+Colorado Springs
+```
+
+### Dorks File (.config/dorks.conf)
+
+Organized by section. Each line is a dork appended to keyword.
+
+**Disclosure Section** (Cyber):
+```
+site:pastebin.com OR site:github.com
+"password" OR "credential"
+```
+
+**Threat Section** (Threat):
+```
+(bomb | attack) site:telegram.org
+(plot | threat) site:4chan.org
+```
+
+### Prompts File (.config/prompts.conf)
+
+Defines AI prompts. Variables: `SYSTEM_PROMPT`, `USER_MESSAGE_TEMPLATE`.
+
+**Cyber Example** (AU-13 focus):
+```
+SYSTEM_PROMPT="You are an expert cybersecurity analyst..."
+USER_MESSAGE_TEMPLATE='Perform AU-13 assessment for "%keyword%"...'
+```
+
+**Threat Example** (Terrorism focus):
+```
+SYSTEM_PROMPT="You are an expert threat intelligence analyst..."
+USER_MESSAGE_TEMPLATE='Assess threats to "%keyword%"...'
 ```
 # WARNING: Use ONLY unclassified, publicly releasable keywords
 Acme Corporation
@@ -170,56 +285,79 @@ site:archive.4plebs.org OR site:desuarchive.org
 
 ```
 Look4Gold13Linux/
-  look4gold.sh          Main entry point
-  setup.sh              Interactive setup wizard
-  lib/
-    common.sh           Config loading, logging, API quota checks
-    audit.sh            AU-3 compliant audit record formatting
-    brave.sh            Brave Search with security-focused dork queries
-    tavily.sh           Tavily Search with shared dork queries + deduplication
-    nist.sh             NIST NVD CVE search
-    otx.sh              AlienVault OTX threat intelligence
-    fourchan.sh         4chan archive search (via Brave/Tavily web search dorks)
-    xai.sh              xAI Grok AI analysis with web search
-    report.sh           CSV and HTML report generation (combined web search view)
-  .config/
-    settings.conf       General settings
-    apis.conf.template  API key template
-    keywords.conf.template  Keywords template
-    dorks.conf.template     Search dork groups template
-  output/               Scan results (gitignored)
+├── look4gold.sh                    Main entry point
+├── setup.sh                        Interactive setup wizard
+├── lib/
+│   ├── common.sh                   Config loading, logging, API quota checks
+│   ├── audit.sh                    AU-3 compliant audit record formatting
+│   ├── brave.sh                    Brave Search with security-focused dork queries
+│   ├── tavily.sh                   Tavily Search with shared dork queries + deduplication
+│   ├── nist.sh                     NIST NVD CVE search
+│   ├── otx.sh                      AlienVault OTX threat intelligence
+│   ├── fourchan.sh                 4chan archive search (via Brave/Tavily web search dorks)
+│   ├── xai.sh                      xAI Grok AI analysis with web search
+│   └── report.sh                   CSV and HTML report generation (combined web search view)
+├── .config/
+│   ├── settings.conf               General settings
+│   ├── apis.conf                   API keys (copy from apis.conf.template)
+│   ├── keywords.conf               Search keywords (edit manually)
+│   ├── dorks.conf                  Search dork groups (copy from templates)
+│   ├── prompts.conf                AI prompts (copy from templates)
+│   ├── apis.conf.template          API key template
+│   ├── dorks-disclosure.template   AU-13 disclosure dorks
+│   ├── dorks-threat.template       Threat intel dorks
+│   ├── prompts-cyber.template      AU-13 cyber prompts
+│   └── prompts-threat.template     Threat intel prompts
+└── output/                         Scan results (gitignored)
 ```
 
 ## NIST SP 800-53 Alignment
 
 This tool supports the following NIST SP 800-53 controls:
 
-- **AU-13 (Monitoring for Information Disclosure)** — Monitors open sources for evidence of unauthorized disclosure of organizational information
-- **AU-2 (Event Logging)** — Identifies events requiring logging (web searches, vulnerability checks, threat intel queries, AI analysis)
-- **AU-3 (Content of Audit Records)** — Each JSONL record contains: timestamp, event type, source, keyword, outcome, severity, description, details, control reference, and scan ID
+- **AU-13 (Monitoring for Information Disclosure)** — Monitors open sources for evidence of unauthorized disclosure of organizational information.
+- **AU-2 (Event Logging)** — Identifies events requiring logging (web searches, vulnerability checks, threat intel queries, AI analysis).
+- **AU-3 (Content of Audit Records)** — Each JSONL record contains: timestamp, event_type, source, keyword, outcome, severity, description, details, control_ref, scan_id.
 
-## Threat Intelligence Mode (Non-AU-13)
+### Threat Intelligence Mode Notes
+- **Not AU-13 Compliant**: Terrorism searches are for authorized threat intel only.
+- **False Positives**: AI helps mitigate, but expect noise.
+- **Legal Compliance**: Consult policies; avoid CUI aggregation.
 
-**WARNING**: Terrorism threat searches are **not AU-13 compliant** for information disclosure monitoring. Use solely for authorized threat intelligence activities under applicable legal frameworks.
+## Modes of Operation
 
-### Usage
-1. Copy templates to configs:
-   ```
-   cp .config/dorks-terror.template .config/dorks.conf
-   cp .config/prompts-terror.template .config/prompts.conf
-   ```
-2. Update `.config/keywords.conf` with target location (e.g., "Colorado Springs").
-3. Run: `bash look4gold.sh --verbose --no-ai` (auto-loads configs).
-4. Review AI-filtered findings; expect high false-positive risk.
+Look4Gold13 supports two primary modes:
 
-Do not use keywords that, when aggregated, constitute Controlled Unclassified Information (CUI) or sensitive data. Consult your organization's information security policy.
+### 1. Cyber Security / Information Disclosure Mode (AU-13 Compliant)
+**Purpose**: Monitor for unauthorized disclosure of organizational information (NIST SP 800-53 AU-13).
 
-### Default Mode (AU-13)
-For disclosure monitoring:
+**Setup**:
 ```
-cp .config/dorks.conf.template .config/dorks.conf
+cp .config/dorks-disclosure.template .config/dorks.conf
 cp .config/prompts-cyber.template .config/prompts.conf
 ```
+
+**Use Case**: Scan for leaked credentials, internal docs, CVE exposures for company assets.
+
+### 2. Threat Intelligence Mode (Non-AU-13)
+**WARNING**: Not AU-13 compliant. Use for authorized threat intelligence only.
+
+**Purpose**: Monitor terrorism/extremism threats to locations.
+
+**Setup**:
+```
+cp .config/dorks-threat.template .config/dorks.conf
+cp .config/prompts-threat.template .config/prompts.conf
+```
+
+**Use Case**: Scan for bomb threats, extremist chatter targeting cities.
+
+### Switching Modes
+- Copy the desired `.template` files to `.config/dorks.conf` and `.config/prompts.conf`.
+- The script auto-loads these configs on startup.
+- Keywords in `.config/keywords.conf` should match the mode (org names for cyber, locations for threat).
+
+**Security Note**: Do not use keywords that aggregate to CUI or sensitive data. Consult your org's policies.
 
 ### Custom AI Prompts
 - `--prompt-file .config/prompts-cyber.conf`: Default cyber disclosure (AU-13)
