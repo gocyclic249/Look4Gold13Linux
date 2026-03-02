@@ -4,3 +4,4 @@
 /.github/\n
 .config/apis.conf
 .config/prompts.conf
+.config/dorks.conf
