@@ -90,7 +90,18 @@ check_deps || exit 1
 # Override config dir if specified (common.sh uses CONFIG_DIR)
 export CONFIG_DIR
 
+# Preserve CLI output dir before loading config
+OUTPUT_DIR_CLI="$OUTPUT_DIR"
+
 load_config || exit 1
+
+# Apply CLI --output-dir override (CLI takes priority over settings.conf)
+OUTPUT_DIR="${OUTPUT_DIR_CLI:-$OUTPUT_DIR}"
+
+# Always make relative OUTPUT_DIR paths script-relative
+if [[ "$OUTPUT_DIR" != /* ]]; then
+    OUTPUT_DIR="$SCRIPT_DIR/$OUTPUT_DIR"
+fi
 
 # Apply log level overrides AFTER load_config (which sets level from settings.conf)
 if [[ "$SILENT" == "true" ]]; then
