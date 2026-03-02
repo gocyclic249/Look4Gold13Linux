@@ -4,7 +4,7 @@
 # High false-positive risk — use AI analysis for mitigation.
 # Avoid keywords that could aggregate to CUI or sensitive info.
 
-[threat]
+[disclosure]
 "[LOCATION]" (bomb | attack | shooting | jihad | ISIS | al-Qaeda) site:telegram.org
 "[LOCATION]" (bomb threat | active shooter | mass casualty) site:4chan.org
 "[LOCATION]" (plot | plan | target | reconnaissance) site:breachforums.st
