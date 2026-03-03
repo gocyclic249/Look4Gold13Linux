@@ -4,6 +4,7 @@
 # of organizational information and outputs AU-2/AU-3 compliant audit records.
 set -euo pipefail
 
+VERSION="1.1.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # --- Default options ---
@@ -20,7 +21,7 @@ usage() {
     cat <<EOF
 Usage: look4gold.sh [OPTIONS]
 
-NIST SP 800-53 AU-13 Information Disclosure Monitoring Tool
+NIST SP 800-53 AU-13 Information Disclosure Monitoring Tool (v${VERSION})
 
 Options:
   --config-dir DIR     Config directory (default: .config/)
@@ -28,14 +29,15 @@ Options:
   --keywords-file FILE Keywords file (default: .config/keywords.conf)
   --dorks-file FILE    Dorks file (default: .config/dorks.conf)
   --no-ai              Skip xAI/Grok analysis
-  --dry-run            Load config and keywords but don't call APIs
+  --dry-run            Validate config and API keys without running scans
   --verbose            Enable verbose (DEBUG) logging
   --silent, -s         Suppress all output (for cron jobs)
+  --version            Show version and exit
   -h, --help           Show this help message
 
 Examples:
   bash look4gold.sh                        # Standard scan
-  bash look4gold.sh --dry-run              # Validate config without API calls
+  bash look4gold.sh --dry-run              # Validate config and API keys
   bash look4gold.sh --no-ai --verbose      # Skip AI, show debug output
   bash look4gold.sh --output-dir /tmp/out  # Custom output location
   bash look4gold.sh --silent               # Cron-friendly, no stdout/stderr
@@ -55,6 +57,7 @@ while [[ $# -gt 0 ]]; do
         --dry-run)      DRY_RUN=true; shift ;;
         --verbose)      VERBOSE=true; shift ;;
         --silent|-s)    SILENT=true; shift ;;
+        --version)      echo "Look4Gold13 v${VERSION}"; exit 0 ;;
         -h|--help)      usage ;;
         *)              echo "Unknown option: $1" >&2; usage ;;
     esac
@@ -67,6 +70,15 @@ _validate_path() {
     case "$path" in
         */../*|*/..|../*|..) echo "ERROR: $label contains '..' (directory traversal not allowed): $path" >&2; exit 1 ;;
     esac
+    # If realpath is available, verify resolved path doesn't escape project root
+    if command -v realpath &>/dev/null; then
+        local resolved
+        resolved=$(realpath -m "$path" 2>/dev/null) || return 0
+        if [[ "$resolved" != "$SCRIPT_DIR"* && "$resolved" != /tmp* && "$resolved" != /var/tmp* ]]; then
+            echo "ERROR: $label resolves outside project directory: $resolved" >&2
+            exit 1
+        fi
+    fi
 }
 [[ -n "$CONFIG_DIR" ]]    && _validate_path "--config-dir" "$CONFIG_DIR"
 [[ -n "$OUTPUT_DIR" ]]    && _validate_path "--output-dir" "$OUTPUT_DIR"
@@ -95,10 +107,8 @@ OUTPUT_DIR_CLI="$OUTPUT_DIR"
 
 load_config || exit 1
 
-# Apply CLI --output-dir override (CLI takes priority over settings.conf)
-OUTPUT_DIR="${OUTPUT_DIR_CLI:-$OUTPUT_DIR}"
-
-# Always make relative OUTPUT_DIR paths script-relative
+# Resolve output directory: CLI > settings.conf > default "output"
+OUTPUT_DIR="${OUTPUT_DIR_CLI:-${OUTPUT_DIR:-output}}"
 if [[ "$OUTPUT_DIR" != /* ]]; then
     OUTPUT_DIR="$SCRIPT_DIR/$OUTPUT_DIR"
 fi
@@ -118,33 +128,22 @@ fi
 load_keywords || exit 1
 
 # Set dorks file if specified
-    if [[ -n "$DORKS_FILE" ]]; then
-        export DORKS_FILE
-    fi
-    load_dorks || exit 1
+if [[ -n "$DORKS_FILE" ]]; then
+    export DORKS_FILE
+fi
+load_dorks || exit 1
 
-    # Load prompt file if specified (for custom AI prompts)
-    if [[ -n "${PROMPT_FILE:-}" ]]; then
-        _validate_path "--prompt-file" "$PROMPT_FILE"
-        # shellcheck source=/dev/null
-        source "$PROMPT_FILE"
-        log_info "Custom prompts loaded from $PROMPT_FILE"
-    elif [[ -f "$CONFIG_DIR/prompts.conf" ]]; then
-        # Auto-load prompts.conf if present
-        # shellcheck source=/dev/null
-        source "$CONFIG_DIR/prompts.conf"
-        log_info "Custom prompts loaded from $CONFIG_DIR/prompts.conf"
-    fi
-
-# Determine output directory
-# CLI --output-dir takes priority, then settings.conf OUTPUT_DIR, then default "output"
-if [[ -z "$OUTPUT_DIR" ]]; then
-    # OUTPUT_DIR may have been set by settings.conf via load_config
-    OUTPUT_DIR="${OUTPUT_DIR:-output}"
-    # Make relative paths relative to project root
-    if [[ "$OUTPUT_DIR" != /* ]]; then
-        OUTPUT_DIR="$SCRIPT_DIR/$OUTPUT_DIR"
-    fi
+# Load prompt file if specified (for custom AI prompts)
+if [[ -n "${PROMPT_FILE:-}" ]]; then
+    _validate_path "--prompt-file" "$PROMPT_FILE"
+    # shellcheck source=/dev/null
+    source "$PROMPT_FILE"
+    log_info "Custom prompts loaded from $PROMPT_FILE"
+elif [[ -f "$CONFIG_DIR/prompts.conf" ]]; then
+    # Auto-load prompts.conf if present
+    # shellcheck source=/dev/null
+    source "$CONFIG_DIR/prompts.conf"
+    log_info "Custom prompts loaded from $CONFIG_DIR/prompts.conf"
 fi
 
 mkdir -p "$OUTPUT_DIR"
@@ -154,23 +153,28 @@ SCAN_FOLDER="$OUTPUT_DIR/$(date -u '+%Y%m%d%H%M%S')"
 mkdir -p "$SCAN_FOLDER"
 chmod 700 "$SCAN_FOLDER" 2>/dev/null || true
 
-# Create scan files with restrictive permissions
+# Create scan files with restrictive permissions (atomic — no world-readable window)
 AUDIT_OUTPUT_FILE="$SCAN_FOLDER/scan.jsonl"
 export AUDIT_OUTPUT_FILE
-touch "$AUDIT_OUTPUT_FILE"
-chmod 600 "$AUDIT_OUTPUT_FILE"
+install -m 600 /dev/null "$AUDIT_OUTPUT_FILE"
 
-log_info "Look4Gold13 — AU-13 Information Disclosure Monitor"
+log_info "Look4Gold13 v${VERSION} — AU-13 Information Disclosure Monitor"
 log_info "Scan folder: $SCAN_FOLDER"
 log_info "Scan JSONL: $AUDIT_OUTPUT_FILE"
 log_info "Keywords: ${#KEYWORDS[@]}"
 log_info "Dry run: $DRY_RUN"
 [[ "$NO_AI" == "true" ]] && log_info "AI analysis: disabled"
 
-# --- Check API quotas ---
-if [[ "$DRY_RUN" == "false" ]]; then
-    check_api_quotas "$NO_AI" || exit 1
-fi
+# --- Check API quotas (always run, even in dry-run, to validate keys) ---
+check_api_quotas "$NO_AI" "$DRY_RUN" || exit 1
+
+# --- SIGINT/TERM handler: write SCAN_END record before exiting ---
+_shutdown() {
+    log_warn "Interrupted — writing final scan record..."
+    end_scan_record
+    exit 130
+}
+trap _shutdown INT TERM
 
 # --- Run scan ---
 start_scan_record "${#KEYWORDS[@]}"

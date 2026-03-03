@@ -8,7 +8,7 @@
 fourchan_search() {
     local keyword="$1"
 
-    if [[ "${FOURCHAN_ENABLED:-false}" != "true" ]]; then
+    if [[ "${FOURCHAN_ENABLED}" != "true" ]]; then
         log_debug "4chan archive search disabled (FOURCHAN_ENABLED != true)"
         return 0
     fi

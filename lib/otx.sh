@@ -21,6 +21,7 @@ otx_search() {
 
     local response http_code body
     response=$(curl -s -w "\n%{http_code}" \
+        --proto =https \
         --max-time 30 --max-redirs 5 \
         -H "X-OTX-API-KEY: $OTX_API_KEY" \
         "https://otx.alienvault.com/api/v1/search/pulses?q=${encoded_keyword}" \
