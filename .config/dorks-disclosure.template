@@ -43,7 +43,9 @@ site:haveibeenpwned.com OR site:databreaches.net OR site:bleepingcomputer.com OR
 breachforums breach leaked database
 
 # --- 4chan archive dork groups ---
-# Archive sites searched via site: dorks (only used when FOURCHAN_ENABLED=true)
+# Board-scoped archive searches (only used when FOURCHAN_ENABLED=true)
 [chan]
-site:archive.4plebs.org OR site:desuarchive.org
-site:archived.moe OR site:thebarchive.com
+site:archive.4plebs.org/pol/ OR site:archive.4plebs.org/b/ OR site:desuarchive.org/g/
+site:archived.moe/b/ OR site:archived.moe/pol/ OR site:thebarchive.com/b/
+site:boards.4chan.org/pol/ OR site:boards.4chan.org/g/ OR site:boards.4channel.org/g/
+site:desuarchive.org/pol/ OR site:archive.4plebs.org/x/ OR site:archived.moe/g/

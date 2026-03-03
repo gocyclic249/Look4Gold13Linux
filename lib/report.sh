@@ -141,6 +141,12 @@ generate_html() {
   .ai-finding-card { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
                      padding: 1rem; margin-bottom: 0.75rem; }
   .ai-finding-card .title { font-weight: 600; font-size: 0.9rem; margin-bottom: 0.4rem; }
+  .ai-finding-card .title a.finding-link { color: var(--muted); text-decoration: none; font-size: 0.75rem;
+                                            margin-left: 0.4rem; opacity: 0.4; vertical-align: middle; }
+  .ai-finding-card .title a.finding-link:hover { opacity: 1; color: var(--accent); }
+  .ai-finding-card .summary { color: var(--text); font-size: 0.875rem; line-height: 1.65;
+                               margin-bottom: 0.6rem; padding: 0.5rem 0.6rem;
+                               background: rgba(108,138,255,0.04); border-radius: 4px; }
   .ai-finding-card .desc { color: var(--muted); font-size: 0.85rem; margin-bottom: 0.5rem; }
   .ai-finding-card .meta-row { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.3rem; }
   .ai-finding-card .meta-row strong { color: var(--text); }
@@ -148,6 +154,19 @@ generate_html() {
   .ai-remediation summary { cursor: pointer; font-size: 0.85rem; color: var(--accent); font-weight: 500; }
   .ai-remediation ul { margin: 0.3rem 0 0 1.2rem; font-size: 0.8rem; color: var(--muted); }
   .ai-remediation li { margin-bottom: 0.2rem; }
+  .ai-finding-sources { margin-top: 0.5rem; }
+  .ai-finding-sources summary { cursor: pointer; font-size: 0.8rem; color: var(--muted); font-weight: 500; }
+  .ai-finding-sources summary .count { font-size: 0.75rem; font-weight: 400; }
+  .ai-finding-sources ul { list-style: none; padding: 0; margin: 0.3rem 0 0 0; }
+  .ai-finding-sources li { font-size: 0.75rem; color: var(--muted); padding: 0.1rem 0; }
+  .ai-finding-sources a { color: var(--accent); text-decoration: none; word-break: break-all; }
+  .ai-finding-sources a:hover { text-decoration: underline; }
+  .ai-source-findings { margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
+  .ai-source-findings h4 { font-size: 0.85rem; color: var(--accent); margin-bottom: 0.4rem; }
+  .ai-source-findings ul { list-style: none; padding: 0; }
+  .ai-source-findings li { font-size: 0.8rem; color: var(--muted); padding: 0.15rem 0; }
+  .ai-source-findings a { color: var(--accent); text-decoration: none; word-break: break-all; }
+  .ai-source-findings a:hover { text-decoration: underline; }
   .ai-pattern { background: var(--bg); border-left: 3px solid var(--yellow); padding: 0.75rem 1rem;
                 margin-bottom: 0.5rem; border-radius: 0 4px 4px 0; }
   .ai-pattern .pattern-title { font-weight: 600; font-size: 0.85rem; margin-bottom: 0.3rem; }
@@ -446,7 +465,12 @@ _html_ai_section() {
 
     local safe_summary safe_detailed
     safe_summary=$(_html_escape "$ai_summary")
-    safe_detailed=$(_html_escape "$ai_detailed")
+    # Collapse 3+ consecutive newlines to 2 (prevents blank space in HTML)
+    local collapsed_detailed="$ai_detailed"
+    while [[ "$collapsed_detailed" == *$'\n\n\n'* ]]; do
+        collapsed_detailed="${collapsed_detailed//$'\n\n\n'/$'\n\n'}"
+    done
+    safe_detailed=$(_html_escape "$collapsed_detailed")
 
     cat >> "$html_file" <<HTMLAI
   <div class="ai-box">
@@ -474,6 +498,10 @@ HTMLDETAIL
             local p_title p_risk
             p_title=$(_html_escape "$(echo "$ai_patterns_json" | jq -r ".[$pi].pattern // \"\"" 2>/dev/null)")
             p_risk=$(_html_escape "$(echo "$ai_patterns_json" | jq -r ".[$pi].compound_risk // \"\"" 2>/dev/null)")
+            # Skip empty pattern entries
+            if [[ -z "$p_title" && -z "$p_risk" ]]; then
+                pi=$((pi + 1)); continue
+            fi
             cat >> "$html_file" <<HTMLPAT
       <div class="ai-pattern">
         <div class="pattern-title">${p_title}</div>
@@ -494,10 +522,25 @@ HTMLPAT
         while [[ $fi_idx -lt $fc ]]; do
             local f_risk f_title f_desc f_justification f_cat
             f_risk=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].risk_level // \"info\"" 2>/dev/null)
-            f_title=$(_html_escape "$(echo "$ai_findings_json" | jq -r ".[$fi_idx].title // \"Finding\"" 2>/dev/null)")
-            f_desc=$(_html_escape "$(echo "$ai_findings_json" | jq -r ".[$fi_idx].detailed_description // .[$fi_idx].description // \"\"" 2>/dev/null)")
-            f_justification=$(_html_escape "$(echo "$ai_findings_json" | jq -r ".[$fi_idx].risk_justification // \"\"" 2>/dev/null)")
             f_cat=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].category // \"\"" 2>/dev/null | sed 's/_/ /g')
+            # Title: try title field, then generate from category
+            local f_title_raw
+            f_title_raw=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].title // \"\"" 2>/dev/null)
+            if [[ -z "$f_title_raw" || "$f_title_raw" == "null" ]]; then
+                if [[ -n "$f_cat" && "$f_cat" != "null" ]]; then
+                    f_title_raw="${f_cat^} Finding"
+                else
+                    f_title_raw="Finding"
+                fi
+            fi
+            f_title=$(_html_escape "$f_title_raw")
+            # Description: try detailed_description, description, then detailed_analysis
+            f_desc=$(_html_escape "$(echo "$ai_findings_json" | jq -r ".[$fi_idx].detailed_description // .[$fi_idx].description // .[$fi_idx].detailed_analysis // \"\"" 2>/dev/null)")
+            # Skip only if both title is generic AND desc is truly empty
+            if [[ "$f_title_raw" == "Finding" ]] && [[ -z "$f_desc" || "$f_desc" == "null" ]]; then
+                fi_idx=$((fi_idx + 1)); continue
+            fi
+            f_justification=$(_html_escape "$(echo "$ai_findings_json" | jq -r ".[$fi_idx].risk_justification // \"\"" 2>/dev/null)")
 
             local f_risk_class="info"
             case "$f_risk" in
@@ -507,10 +550,44 @@ HTMLPAT
                 low)      f_risk_class="low" ;;
             esac
 
+            # Generate anchor ID from keyword + index (URL-safe)
+            local safe_kw_slug finding_anchor
+            safe_kw_slug=$(printf '%s' "$keyword" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g; s/--*/-/g; s/^-//; s/-$//')
+            finding_anchor="finding-${safe_kw_slug}-$((fi_idx + 1))"
+
+            # Build 1-paragraph summary from available description fields
+            local f_summary_text
+            f_summary_text=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].detailed_description // .[$fi_idx].description // .[$fi_idx].detailed_analysis // \"\"" 2>/dev/null)
+            # Fallback: if all description fields are empty, use other available fields
+            if [[ -z "$f_summary_text" || "$f_summary_text" == "null" ]]; then
+                local fb_just fb_cat_raw
+                fb_just=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].risk_justification // .[$fi_idx].recommended_actions // \"\"" 2>/dev/null)
+                fb_cat_raw=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].category // \"\"" 2>/dev/null | sed 's/_/ /g')
+                if [[ -n "$fb_just" && "$fb_just" != "null" ]]; then
+                    f_summary_text="$fb_just"
+                elif [[ -n "$fb_cat_raw" && "$fb_cat_raw" != "null" ]]; then
+                    f_summary_text="Finding categorized as ${fb_cat_raw}. Risk level: ${f_risk}."
+                else
+                    f_summary_text="Risk level: ${f_risk}."
+                fi
+            fi
+            f_summary_text=$(_html_escape "$f_summary_text")
+            # Truncate to ~300 chars at a sentence boundary if possible
+            if [[ ${#f_summary_text} -gt 300 ]]; then
+                # Try to cut at a period within the first 350 chars
+                local cut_at="${f_summary_text:0:350}"
+                if [[ "$cut_at" == *". "* ]]; then
+                    # Find last period+space within range
+                    f_summary_text="${cut_at%%. *}."
+                else
+                    f_summary_text="${f_summary_text:0:300}..."
+                fi
+            fi
+
             cat >> "$html_file" <<HTMLFINDING
-      <div class="ai-finding-card">
-        <div class="title"><span class="badge badge-${f_risk_class}">${f_risk}</span> ${f_title}</div>
-        <div class="desc">${f_desc}</div>
+      <div class="ai-finding-card" id="${finding_anchor}">
+        <div class="title"><span class="badge badge-${f_risk_class}">${f_risk}</span> ${f_title}<a class="finding-link" href="#${finding_anchor}" title="Link to this finding">#</a></div>
+        <div class="summary">${f_summary_text}</div>
 HTMLFINDING
 
             if [[ -n "$f_justification" ]]; then
@@ -521,63 +598,123 @@ HTMLFINDING
             fi
 
             local f_systems
-            f_systems=$(_html_escape "$(echo "$ai_findings_json" | jq -r ".[$fi_idx].affected_systems // [] | join(\", \")" 2>/dev/null)")
-            if [[ -n "$f_systems" ]]; then
-                echo "        <div class=\"meta-row\"><strong>Affected Systems:</strong> ${f_systems}</div>" >> "$html_file"
+            f_systems=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].affected_systems // [] | if type == \"array\" then join(\", \") else . end" 2>/dev/null)
+            # Fallback to affected_area (string field some AI responses use)
+            if [[ -z "$f_systems" || "$f_systems" == "null" ]]; then
+                f_systems=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].affected_area // \"\"" 2>/dev/null)
+            fi
+            f_systems=$(_html_escape "$f_systems")
+            if [[ -n "$f_systems" && "$f_systems" != "null" ]]; then
+                echo "        <div class=\"meta-row\"><strong>Affected Area:</strong> ${f_systems}</div>" >> "$html_file"
             fi
 
-            # Threat context indicators
-            local t_active t_exploit t_kev t_notes
-            t_active=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].threat_context.active_exploitation // false" 2>/dev/null)
-            t_exploit=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].threat_context.exploit_available // false" 2>/dev/null)
-            t_kev=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].threat_context.cisa_kev // false" 2>/dev/null)
-            t_notes=$(_html_escape "$(echo "$ai_findings_json" | jq -r ".[$fi_idx].threat_context.notes // \"\"" 2>/dev/null)")
+            # Threat context — handle both object form (.threat_context.notes) and string form
+            local t_active t_exploit t_kev t_notes t_ctx_type
+            t_ctx_type=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].threat_context | type" 2>/dev/null)
+            if [[ "$t_ctx_type" == "object" ]]; then
+                t_active=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].threat_context.active_exploitation // false" 2>/dev/null)
+                t_exploit=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].threat_context.exploit_available // false" 2>/dev/null)
+                t_kev=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].threat_context.cisa_kev // false" 2>/dev/null)
+                t_notes=$(_html_escape "$(echo "$ai_findings_json" | jq -r ".[$fi_idx].threat_context.notes // \"\"" 2>/dev/null)")
+            else
+                t_active="false"; t_exploit="false"; t_kev="false"
+                t_notes=$(_html_escape "$(echo "$ai_findings_json" | jq -r ".[$fi_idx].threat_context // \"\"" 2>/dev/null)")
+            fi
 
             echo '        <div class="threat-indicators">' >> "$html_file"
             [[ "$t_active" == "true" ]] && echo '          <span class="threat-ind active">ACTIVELY EXPLOITED</span>' >> "$html_file"
             [[ "$t_exploit" == "true" ]] && echo '          <span class="threat-ind active">EXPLOIT AVAILABLE</span>' >> "$html_file"
             [[ "$t_kev" == "true" ]] && echo '          <span class="threat-ind active">CISA KEV</span>' >> "$html_file"
             echo '        </div>' >> "$html_file"
-            if [[ -n "$t_notes" ]]; then
+            if [[ -n "$t_notes" && "$t_notes" != "null" ]]; then
                 echo "        <div class=\"meta-row\"><strong>Threat Context:</strong> ${t_notes}</div>" >> "$html_file"
             fi
 
-            # Remediation (collapsible)
-            local rem_immediate rem_short rem_long
-            rem_immediate=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].remediation.immediate // [] | .[]" 2>/dev/null)
-            rem_short=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].remediation.short_term // [] | .[]" 2>/dev/null)
-            rem_long=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].remediation.long_term // [] | .[]" 2>/dev/null)
+            # Remediation (collapsible) — handle both structured object and plain string
+            local rem_type rem_immediate rem_short rem_long rem_actions
+            rem_type=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].remediation | type" 2>/dev/null)
+            rem_actions=""
+            if [[ "$rem_type" == "object" ]]; then
+                rem_immediate=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].remediation.immediate // [] | .[]" 2>/dev/null)
+                rem_short=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].remediation.short_term // [] | .[]" 2>/dev/null)
+                rem_long=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].remediation.long_term // [] | .[]" 2>/dev/null)
+            else
+                rem_immediate=""; rem_short=""; rem_long=""
+                # Fall back to recommended_actions (string field)
+                rem_actions=$(echo "$ai_findings_json" | jq -r ".[$fi_idx].recommended_actions // \"\"" 2>/dev/null)
+            fi
 
-            if [[ -n "$rem_immediate" || -n "$rem_short" || -n "$rem_long" ]]; then
+            if [[ -n "$rem_immediate" || -n "$rem_short" || -n "$rem_long" || ( -n "$rem_actions" && "$rem_actions" != "null" ) ]]; then
                 echo '        <details class="ai-remediation">' >> "$html_file"
-                echo '          <summary>Remediation Steps</summary>' >> "$html_file"
-                if [[ -n "$rem_immediate" ]]; then
-                    echo '          <strong style="font-size:0.8rem;color:var(--red)">Immediate (24-72h):</strong><ul>' >> "$html_file"
-                    while IFS= read -r item; do
-                        local safe_item
-                        safe_item=$(_html_escape "$item")
-                        echo "            <li>${safe_item}</li>" >> "$html_file"
-                    done <<< "$rem_immediate"
+                echo '          <summary>Recommended Actions</summary>' >> "$html_file"
+                if [[ -n "$rem_actions" && "$rem_actions" != "null" ]]; then
+                    # Plain string: split on semicolons or render as single item
+                    echo '          <ul>' >> "$html_file"
+                    local IFS_BAK="$IFS"
+                    IFS=';'
+                    local action_part
+                    for action_part in $rem_actions; do
+                        action_part="${action_part#"${action_part%%[![:space:]]*}"}"
+                        action_part="${action_part%"${action_part##*[![:space:]]}"}"
+                        [[ -z "$action_part" ]] && continue
+                        local safe_action
+                        safe_action=$(_html_escape "$action_part")
+                        echo "            <li>${safe_action}</li>" >> "$html_file"
+                    done
+                    IFS="$IFS_BAK"
                     echo '          </ul>' >> "$html_file"
+                else
+                    if [[ -n "$rem_immediate" ]]; then
+                        echo '          <strong style="font-size:0.8rem;color:var(--red)">Immediate (24-72h):</strong><ul>' >> "$html_file"
+                        while IFS= read -r item; do
+                            local safe_item
+                            safe_item=$(_html_escape "$item")
+                            echo "            <li>${safe_item}</li>" >> "$html_file"
+                        done <<< "$rem_immediate"
+                        echo '          </ul>' >> "$html_file"
+                    fi
+                    if [[ -n "$rem_short" ]]; then
+                        echo '          <strong style="font-size:0.8rem;color:var(--orange)">Short-term (1-2 weeks):</strong><ul>' >> "$html_file"
+                        while IFS= read -r item; do
+                            local safe_item
+                            safe_item=$(_html_escape "$item")
+                            echo "            <li>${safe_item}</li>" >> "$html_file"
+                        done <<< "$rem_short"
+                        echo '          </ul>' >> "$html_file"
+                    fi
+                    if [[ -n "$rem_long" ]]; then
+                        echo '          <strong style="font-size:0.8rem;color:var(--accent)">Long-term:</strong><ul>' >> "$html_file"
+                        while IFS= read -r item; do
+                            local safe_item
+                            safe_item=$(_html_escape "$item")
+                            echo "            <li>${safe_item}</li>" >> "$html_file"
+                        done <<< "$rem_long"
+                        echo '          </ul>' >> "$html_file"
+                    fi
                 fi
-                if [[ -n "$rem_short" ]]; then
-                    echo '          <strong style="font-size:0.8rem;color:var(--orange)">Short-term (1-2 weeks):</strong><ul>' >> "$html_file"
-                    while IFS= read -r item; do
-                        local safe_item
-                        safe_item=$(_html_escape "$item")
-                        echo "            <li>${safe_item}</li>" >> "$html_file"
-                    done <<< "$rem_short"
-                    echo '          </ul>' >> "$html_file"
-                fi
-                if [[ -n "$rem_long" ]]; then
-                    echo '          <strong style="font-size:0.8rem;color:var(--accent)">Long-term:</strong><ul>' >> "$html_file"
-                    while IFS= read -r item; do
-                        local safe_item
-                        safe_item=$(_html_escape "$item")
-                        echo "            <li>${safe_item}</li>" >> "$html_file"
-                    done <<< "$rem_long"
-                    echo '          </ul>' >> "$html_file"
-                fi
+                echo '        </details>' >> "$html_file"
+            fi
+
+            # Sources consulted per finding (collapsible)
+            local f_sources_json
+            f_sources_json=$(echo "$ai_findings_json" | jq -c ".[$fi_idx].sources_consulted // []" 2>/dev/null)
+            if [[ -n "$f_sources_json" && "$f_sources_json" != "[]" && "$f_sources_json" != "null" ]]; then
+                echo '        <details class="ai-finding-sources">' >> "$html_file"
+                echo '          <summary>Sources Consulted</summary>' >> "$html_file"
+                echo '          <ul>' >> "$html_file"
+                echo "$f_sources_json" | jq -r '.[]' 2>/dev/null | while IFS= read -r fsrc; do
+                    [[ -z "$fsrc" ]] && continue
+                    local safe_fsrc
+                    safe_fsrc=$(_html_escape "$fsrc")
+                    if echo "$fsrc" | grep -q '^https\?://'; then
+                        local safe_fhref
+                        safe_fhref=$(_sanitize_url "$fsrc")
+                        echo "            <li><a href=\"${safe_fhref}\" target=\"_blank\" rel=\"noopener\">${safe_fsrc}</a></li>"
+                    else
+                        echo "            <li>${safe_fsrc}</li>"
+                    fi
+                done >> "$html_file"
+                echo '          </ul>' >> "$html_file"
                 echo '        </details>' >> "$html_file"
             fi
 
@@ -587,24 +724,58 @@ HTMLFINDING
         echo '    </div>' >> "$html_file"
     fi
 
-    # Research sources (or grok_citations fallback)
+    # Research sources (or grok_citations fallback) — collapsible
     if [[ -n "$ai_sources_json" && "$ai_sources_json" != "[]" && "$ai_sources_json" != "null" ]]; then
+        local src_count
+        src_count=$(echo "$ai_sources_json" | jq 'length' 2>/dev/null || echo "0")
         {
         echo '    <div class="ai-section">'
-        echo "      <h4>${sources_label}</h4>"
-        echo '      <ul class="ai-sources">'
+        echo "      <details class=\"ai-finding-sources\">"
+        echo "        <summary>${sources_label} <span class=\"count\">(${src_count})</span></summary>"
+        echo '        <ul class="ai-sources">'
         echo "$ai_sources_json" | jq -r '.[]' 2>/dev/null | while IFS= read -r src; do
             local safe_src
             safe_src=$(_html_escape "$src")
             if echo "$src" | grep -q '^https\?://'; then
                 local safe_href
                 safe_href=$(_sanitize_url "$src")
-                echo "        <li><a href=\"${safe_href}\" target=\"_blank\" rel=\"noopener\">${safe_src}</a></li>"
+                echo "          <li><a href=\"${safe_href}\" target=\"_blank\" rel=\"noopener\">${safe_src}</a></li>"
             else
-                echo "        <li>${safe_src}</li>"
+                echo "          <li>${safe_src}</li>"
             fi
         done
-        echo '      </ul>'
+        echo '        </ul>'
+        echo '      </details>'
+        echo '    </div>'
+        } >> "$html_file"
+    fi
+
+    # Source Findings — unique URLs from SEARCH_WEB/SEARCH_CHAN JSONL records for this keyword
+    local source_urls
+    source_urls=$(jq -r --arg kw "$keyword" '
+        select(.keyword == $kw and (.event_type == "SEARCH_WEB" or .event_type == "SEARCH_CHAN") and .outcome == "found")
+        | .details.url // empty
+    ' "$jsonl_file" 2>/dev/null | sort -u)
+
+    if [[ -n "$source_urls" ]]; then
+        local sf_count
+        sf_count=$(echo "$source_urls" | grep -c . || echo "0")
+        {
+        echo '    <div class="ai-source-findings">'
+        echo "      <details class=\"ai-finding-sources\">"
+        echo "        <summary>Source Findings <span class=\"count\">(${sf_count})</span></summary>"
+        echo '        <ul>'
+        while IFS= read -r surl; do
+            [[ -z "$surl" ]] && continue
+            local safe_surl safe_shref
+            safe_surl=$(_html_escape "$surl")
+            safe_shref=$(_sanitize_url "$surl")
+            if [[ -n "$safe_shref" ]]; then
+                echo "          <li><a href=\"${safe_shref}\" target=\"_blank\" rel=\"noopener\">${safe_surl}</a></li>"
+            fi
+        done <<< "$source_urls"
+        echo '        </ul>'
+        echo '      </details>'
         echo '    </div>'
         } >> "$html_file"
     fi
