@@ -14,5 +14,5 @@
 (plan | blueprint) site:archive.org
 
 [chan]
-site:archive.4plebs.org OR site:desuarchive.org OR site:archived.moe
-(thread | post) site:thebarchive.com
+site:archive.4plebs.org/pol/ OR site:archive.4plebs.org/b/ OR site:desuarchive.org/pol/
+site:archived.moe/pol/ OR site:archived.moe/b/ OR site:thebarchive.com/b/
