@@ -13,9 +13,10 @@ SEARCH_RESULT_COUNT=10
 # Number of days back to search (limits results to recent disclosures)
 SEARCH_DAYS_BACK=7
 
-# Brave Search dork mode: "security" uses AU-13 disclosure dorks, "raw" uses plain keyword
+# Search dork mode: "security" uses AU-13 disclosure dorks, "raw" uses plain keyword
 # This setting applies to both Brave and Tavily search modules.
-BRAVE_DORK_MODE="security"
+# (Legacy name BRAVE_DORK_MODE is also accepted)
+DORK_MODE="security"
 
 # Tavily search depth: "basic" (1 credit), "advanced" (2 credits), "fast", or "ultra-fast"
 TAVILY_SEARCH_DEPTH="basic"

@@ -27,6 +27,7 @@ nist_search() {
 
     local response http_code body
     response=$(curl -s -w "\n%{http_code}" \
+        --proto =https \
         --max-time 30 --max-redirs 5 \
         -H "apiKey: $NIST_API_KEY" \
         "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${encoded_keyword}&pubStartDate=${pub_start}&pubEndDate=${pub_end}" \

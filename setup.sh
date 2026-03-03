@@ -53,15 +53,18 @@ prompt_key() {
 
     if [[ -n "$current" ]]; then
         local masked="${current:0:4}...${current: -4}"
-        read -rp "  $name [$masked] (Enter to keep): " value
+        # Use -s to hide API key input from terminal (and shell history via subshell)
+        read -rsp "  $name [$masked] (Enter to keep): " value
+        echo >&2  # newline after silent input
         if [[ -z "$value" ]]; then
-            echo "$current"
+            printf '%s' "$current"
         else
-            echo "$value"
+            printf '%s' "$value"
         fi
     else
-        read -rp "  $name (Enter to skip): " value
-        echo "$value"
+        read -rsp "  $name (Enter to skip): " value
+        echo >&2  # newline after silent input
+        printf '%s' "$value"
     fi
 }
 
@@ -95,6 +98,7 @@ OTX_API_KEY="$OTX_API_KEY"
 XAI_API_KEY="$XAI_API_KEY"
 EOF
 chmod 600 "$apis_file"
+chmod 700 "$CONFIG_DIR" 2>/dev/null || true
 echo "API keys saved to $apis_file"
 
 # --- Keywords file ---
@@ -124,7 +128,7 @@ echo "Validating API keys..."
 
 if [[ -z "$BRAVE_API_KEY" ]]; then
     echo "  [SKIP] Brave Search — no key provided"
-elif curl -sf --max-time 15 --max-redirs 3 \
+elif curl -sf --max-time 15 --max-redirs 3 --proto =https \
     -H "X-Subscription-Token: $BRAVE_API_KEY" \
     "https://api.search.brave.com/res/v1/web/search?q=test&count=1" &>/dev/null; then
     echo "  [OK]   Brave Search"
@@ -134,7 +138,7 @@ fi
 
 if [[ -z "$TAVILY_API_KEY" ]]; then
     echo "  [SKIP] Tavily Search — no key provided"
-elif curl -sf --max-time 15 --max-redirs 3 \
+elif curl -sf --max-time 15 --max-redirs 3 --proto =https \
     -X POST -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TAVILY_API_KEY" \
     -d '{"query":"test","max_results":1}' \
@@ -146,7 +150,7 @@ fi
 
 if [[ -z "$NIST_API_KEY" ]]; then
     echo "  [SKIP] NIST NVD — no key provided"
-elif curl -sf --max-time 15 --max-redirs 3 \
+elif curl -sf --max-time 15 --max-redirs 3 --proto =https \
     -H "apiKey: $NIST_API_KEY" \
     "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=test&resultsPerPage=1" &>/dev/null; then
     echo "  [OK]   NIST NVD"
@@ -156,7 +160,7 @@ fi
 
 if [[ -z "$OTX_API_KEY" ]]; then
     echo "  [SKIP] AlienVault OTX — no key provided"
-elif curl -sf --max-time 15 --max-redirs 3 \
+elif curl -sf --max-time 15 --max-redirs 3 --proto =https \
     -H "X-OTX-API-KEY: $OTX_API_KEY" \
     "https://otx.alienvault.com/api/v1/user/me" &>/dev/null; then
     echo "  [OK]   AlienVault OTX"
@@ -166,7 +170,7 @@ fi
 
 if [[ -z "$XAI_API_KEY" ]]; then
     echo "  [SKIP] xAI (Grok) — no key provided"
-elif curl -sf --max-time 15 --max-redirs 3 \
+elif curl -sf --max-time 15 --max-redirs 3 --proto =https \
     -H "Authorization: Bearer $XAI_API_KEY" \
     "https://api.x.ai/v1/models" &>/dev/null; then
     echo "  [OK]   xAI (Grok)"

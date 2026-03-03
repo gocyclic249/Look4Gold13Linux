@@ -15,7 +15,7 @@ tavily_search() {
         return 0
     fi
 
-    local dork_mode="${BRAVE_DORK_MODE:-security}"
+    local dork_mode="${DORK_MODE:-security}"
 
     if [[ "$dork_mode" == "raw" ]]; then
         _tavily_query "$keyword" "$keyword" "raw"
@@ -81,6 +81,7 @@ _tavily_query() {
     local response http_code body
     response=$(echo "$request_body" | curl -s -w "\n%{http_code}" \
         -X POST \
+        --proto =https \
         --max-time 30 --max-redirs 5 \
         -H "Content-Type: application/json" \
         -H "Authorization: Bearer $TAVILY_API_KEY" \

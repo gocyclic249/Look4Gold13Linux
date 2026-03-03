@@ -82,13 +82,15 @@ Usage: look4gold.sh [OPTIONS]
 
 Options:
   --config-dir DIR     Config directory (default: .config/)
-  --output-dir DIR     Output directory (default: from settings.conf)
+  --output-dir DIR     Output directory (CLI overrides settings.conf; default: from settings.conf)
   --keywords-file FILE Keywords file (default: .config/keywords.conf)
   --dorks-file FILE    Dorks file (default: .config/dorks.conf)
+  --prompt-file FILE   Custom AI prompt file (default: auto-loads .config/prompts.conf)
   --no-ai              Skip xAI/Grok analysis
   --dry-run            Load config and keywords but don't call APIs
   --verbose            Enable verbose (DEBUG) logging
   --silent, -s         Suppress all output (for cron jobs)
+  --version            Show version and exit
   -h, --help           Show this help message
 ```
 
@@ -153,12 +155,6 @@ open "$FOLDER/scan.html"  # On macOS
 0 6 * * * /path/to/Look4Gold13Linux/look4gold.sh --silent
 ```
 
-#### Output File Structure
-Scans create timestamped folders: `output/YYYYMMDDHHMMSS/`
-- `scan.jsonl`: AU-3 audit records
-- `scan.csv`: Spreadsheet summary
-- `scan.html`: Web report with AI analysis
-
 #### Log Analysis
 Check logs for issues:
 ```bash
@@ -176,6 +172,7 @@ All configuration is managed via template files in `.config/`. Copy the desired 
 
 | Template | Config File | Purpose |
 |----------|-------------|---------|
+| `settings.conf.template` | `settings.conf` | General settings (log level, search depth, timeouts) |
 | `dorks-disclosure.template` | `dorks.conf` | AU-13 disclosure dorks |
 | `dorks-threat.template` | `dorks.conf` | Terrorism threat dorks |
 | `prompts-disclosure.template` | `prompts.conf` | Information disclosure AI prompts (AU-13) |
@@ -197,8 +194,8 @@ cp .config/prompts-disclosure.template .config/prompts.conf
 | `LOG_LEVEL` | `INFO` | Logging verbosity: DEBUG, INFO, WARN, ERROR |
 | `SEARCH_RESULT_COUNT` | `10` | Max results per query (Brave/Tavily) |
 | `SEARCH_DAYS_BACK` | `7` | Limit results to last N days |
-| `BRAVE_DORK_MODE` | `security` | `security` (dorks) or `raw` (plain keyword) |
-| `TAVILY_SEARCH_DEPTH` | `basic` | Search depth: basic/advanced |
+| `DORK_MODE` | `security` | `security` (dorks) or `raw` (plain keyword). Legacy name `BRAVE_DORK_MODE` also accepted |
+| `TAVILY_SEARCH_DEPTH` | `basic` | Search depth: basic/advanced/fast/ultra-fast |
 | `XAI_MODEL` | `grok-4-1-fast-reasoning` | xAI model for analysis |
 | `XAI_TIMEOUT` | `300` | API timeout in seconds |
 | `XAI_WEB_SEARCH` | `true` | Enable Grok web search |
@@ -256,30 +253,6 @@ USER_MESSAGE_TEMPLATE='Perform AU-13 assessment for "%keyword%"...'
 SYSTEM_PROMPT="You are an expert threat intelligence analyst..."
 USER_MESSAGE_TEMPLATE='Assess threats to "%keyword%"...'
 ```
-# WARNING: Use ONLY unclassified, publicly releasable keywords
-Acme Corporation
-Acme Corp
-AcmeTech Router X500
-acme-corp.com
-```
-
-### .config/dorks.conf
-
-Customizable search dork groups organized by section. Copy from `dorks.conf.template` and edit to fit your threat profile. Each non-comment line within a section becomes a separate API call per keyword.
-
-```
-# Sections: [disclosure], [breach], [chan]
-[disclosure]
-site:pastebin.com OR site:github.com OR site:gist.github.com OR site:reddit.com
-site:your-industry-forum.com OR site:your-paste-site.com
-
-[breach]
-breach data leak compromised
-ransomware attack security incident
-
-[chan]
-site:archive.4plebs.org OR site:desuarchive.org
-```
 
 ## Project Structure
 
@@ -287,6 +260,8 @@ site:archive.4plebs.org OR site:desuarchive.org
 Look4Gold13Linux/
 ├── look4gold.sh                    Main entry point
 ├── setup.sh                        Interactive setup wizard
+├── CLAUDE.md                       Claude Code project instructions
+├── AGENTS.md                       Multi-agent architecture docs
 ├── lib/
 │   ├── common.sh                   Config loading, logging, API quota checks
 │   ├── audit.sh                    AU-3 compliant audit record formatting
@@ -298,16 +273,19 @@ Look4Gold13Linux/
 │   ├── xai.sh                      xAI Grok AI analysis with web search
 │   └── report.sh                   CSV and HTML report generation (combined web search view)
 ├── .config/
-│   ├── settings.conf               General settings
-│   ├── apis.conf                   API keys (copy from apis.conf.template)
-│   ├── keywords.conf               Search keywords (edit manually)
-│   ├── dorks.conf                  Search dork groups (copy from templates)
-│   ├── prompts.conf                AI prompts (copy from templates)
+│   ├── settings.conf.template      General settings template
 │   ├── apis.conf.template          API key template
+│   ├── keywords.conf.template      Example keywords
 │   ├── dorks-disclosure.template   AU-13 disclosure dorks
 │   ├── dorks-threat.template       Threat intel dorks
-│   ├── prompts-cyber.template      AU-13 cyber prompts
+│   ├── prompts-disclosure.template AU-13 disclosure prompts
 │   └── prompts-threat.template     Threat intel prompts
+├── test/
+│   ├── bats/                       Bats test suites (audit, common, integration)
+│   ├── fixtures/                   Test config fixtures
+│   ├── lint.sh                     ShellCheck lint wrapper
+│   └── run_tests.sh                Test runner
+├── .github/workflows/              CI workflows
 └── output/                         Scan results (gitignored)
 ```
 
@@ -328,7 +306,7 @@ This tool supports the following NIST SP 800-53 controls:
 
 Look4Gold13 supports two primary modes:
 
-### 1. Information Disclosure Mode (AU-13 Compliant) (AU-13 Compliant)
+### 1. Information Disclosure Mode (AU-13 Compliant)
 **Purpose**: Monitor for unauthorized disclosure of organizational information (NIST SP 800-53 AU-13).
 
 **Setup**:
@@ -360,11 +338,14 @@ cp .config/prompts-threat.template .config/prompts.conf
 **Security Note**: Do not use keywords that aggregate to CUI or sensitive data. Consult your org's policies.
 
 ### Custom AI Prompts
-- `--prompt-file .config/prompts-disclosure.conf`: Default cyber disclosure (AU-13)
-- `--prompt-file .config/prompts-terror.conf`: Threat intel mode
+- `--prompt-file .config/prompts-disclosure.template`: Cyber disclosure prompts (AU-13)
+- `--prompt-file .config/prompts-threat.template`: Threat intel prompts
 
-Copy templates to .conf files and customize.
+Or copy a template to `prompts.conf` for auto-loading without `--prompt-file`:
+```bash
+cp .config/prompts-disclosure.template .config/prompts.conf
+```
 
 ## License
 
-See [LICENSE](LICENSE) for details.
+No license file has been added yet. Contact the repository owner for licensing details.

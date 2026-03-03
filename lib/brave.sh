@@ -15,7 +15,7 @@ brave_search() {
         return 0
     fi
 
-    local dork_mode="${BRAVE_DORK_MODE:-security}"
+    local dork_mode="${DORK_MODE:-security}"
 
     if [[ "$dork_mode" == "raw" ]]; then
         _brave_query "$keyword" "$keyword" "raw"
@@ -60,6 +60,7 @@ _brave_query() {
 
     local response http_code body
     response=$(curl -s -w "\n%{http_code}" \
+        --proto =https \
         --max-time 30 --max-redirs 5 \
         -H "Accept: application/json" \
         -H "Accept-Encoding: gzip" \

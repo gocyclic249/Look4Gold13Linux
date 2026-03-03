@@ -20,7 +20,7 @@ xai_analyze() {
 
     # Build tools array based on settings
     local tools_json="[]"
-    if [[ "${XAI_WEB_SEARCH:-true}" == "true" ]]; then
+    if [[ "${XAI_WEB_SEARCH}" == "true" ]]; then
         tools_json=$(echo "$tools_json" | jq -c '. + [{"type":"web_search"}]')
     fi
 
@@ -28,36 +28,35 @@ xai_analyze() {
     tools_desc=$(echo "$tools_json" | jq -r '[.[].type] | join("+")' 2>/dev/null)
     log_info "xAI: analyzing keyword '$keyword' (model: $model, tools: ${tools_desc:-none})"
 
+    # Use custom prompts if set (via --prompt-file or prompts.conf), otherwise use defaults
     local system_prompt user_message
-    if [[ -n "${PROMPT_FILE:-}" ]]; then
-        # Load custom prompts from file
-        # shellcheck source=/dev/null
-        source "$PROMPT_FILE"
-        log_debug "Custom prompts loaded from $PROMPT_FILE"
-    fi
-    system_prompt="${SYSTEM_PROMPT:-You are an expert cybersecurity analyst... [default fallback]}"
-    user_message="${USER_MESSAGE_TEMPLATE:-Perform a comprehensive AU-13... %findings_json}"
-    user_message="${user_message//%keyword%/$keyword}"
-    user_message="${user_message//%findings_json%/$findings_json}"
+    system_prompt="${SYSTEM_PROMPT:-You are an expert cybersecurity analyst specializing in NIST SP 800-53 AU-13 information disclosure monitoring. You assess findings from web searches, vulnerability databases, and threat intelligence sources to determine disclosure risk levels and provide actionable remediation guidance.}"
 
-    local user_message
-    user_message="Perform a comprehensive AU-13 information disclosure risk assessment for the keyword/asset: \"${keyword}\".
+    if [[ -n "${USER_MESSAGE_TEMPLATE:-}" ]]; then
+        # Custom prompt template — substitute placeholders
+        user_message="${USER_MESSAGE_TEMPLATE}"
+        user_message="${user_message//%keyword%/$keyword}"
+        user_message="${user_message//%findings_json%/$findings_json}"
+    else
+        # Default prompt
+        user_message="Perform a comprehensive AU-13 information disclosure risk assessment for the keyword/asset: \"${keyword}\".
 
 Use your web search capability to research, verify, and expand on each finding. Do not merely summarize the data provided — investigate deeply, cross-reference across sources, and provide actionable intelligence with specific remediation guidance.
 
 Findings data for \"${keyword}\":
 
 $findings_json"
+    fi
 
     # Write large content to temp files to avoid "Argument list too long"
     # (jq --arg passes data via argv which has OS limits; --rawfile reads from disk)
     local tmp_system tmp_user tmp_response tmp_body tmp_ai_content tmp_ai_details
-    tmp_system=$(mktemp)
-    tmp_user=$(mktemp)
-    tmp_response=$(mktemp)
-    tmp_body=$(mktemp)
-    tmp_ai_content=$(mktemp)
-    tmp_ai_details=$(mktemp)
+    tmp_system=$(_mktemp)
+    tmp_user=$(_mktemp)
+    tmp_response=$(_mktemp)
+    tmp_body=$(_mktemp)
+    tmp_ai_content=$(_mktemp)
+    tmp_ai_details=$(_mktemp)
     # Single trap cleans up ALL temp files on function return (normal or error)
     # shellcheck disable=SC2064
     trap "rm -f '$tmp_system' '$tmp_user' '$tmp_response' '$tmp_body' '$tmp_ai_content' '$tmp_ai_details'" RETURN
@@ -82,6 +81,7 @@ $findings_json"
 
     echo "$request_body" | curl -s -w "\n%{http_code}" \
         -X POST \
+        --proto =https \
         --max-time "${XAI_TIMEOUT:-300}" --max-redirs 5 \
         -H "Content-Type: application/json" \
         -H "Authorization: Bearer $XAI_API_KEY" \
@@ -170,7 +170,7 @@ $findings_json"
             candidate=$(sed -n "${line_num},\$p" < "$tmp_ai_content" | sed '1s/^[^{]*//' | jq -c '.' 2>/dev/null | head -1)
             [[ -z "$candidate" ]] && continue
             local has_keys
-            has_keys=$(echo "$candidate" | jq 'has("overall_risk") or has("executive_summary") or has("prioritized_findings")' 2>/dev/null)
+            has_keys=$(echo "$candidate" | jq 'has("overall_risk") or has("overall_threat_level") or has("executive_summary") or has("prioritized_findings")' 2>/dev/null)
             if [[ "$has_keys" == "true" ]]; then
                 parsed_json="$candidate"
                 break
@@ -184,12 +184,12 @@ $findings_json"
         local stream_obj
         stream_obj=$(jq --stream -c \
             'select(length == 2 and (.[0] | length) == 1 and
-                    (.[0][0] | IN("overall_risk","executive_summary","detailed_assessment")))
+                    (.[0][0] | IN("overall_risk","overall_threat_level","executive_summary","detailed_assessment")))
              | {(.[0][0]): .[1]}' < "$tmp_ai_content" 2>/dev/null \
             | jq -sc 'add // empty')
         if [[ -n "$stream_obj" ]]; then
             local has_keys
-            has_keys=$(echo "$stream_obj" | jq 'has("overall_risk") or has("executive_summary")' 2>/dev/null)
+            has_keys=$(echo "$stream_obj" | jq 'has("overall_risk") or has("overall_threat_level") or has("executive_summary")' 2>/dev/null)
             if [[ "$has_keys" == "true" ]]; then
                 parsed_json="$stream_obj"
                 log_info "xAI: recovered key fields via streaming parser"
@@ -214,7 +214,7 @@ $findings_json"
 
     # Extract risk and summary from the parsed details (not raw content)
     local overall_risk
-    overall_risk=$(jq -r '.overall_risk // "low"' < "$tmp_ai_details" 2>/dev/null)
+    overall_risk=$(jq -r '.overall_risk // .overall_threat_level // "low"' < "$tmp_ai_details" 2>/dev/null)
     [[ "$overall_risk" == "null" || -z "$overall_risk" ]] && overall_risk="low"
     # Remap "info" to "low" — AU-13 findings always represent some disclosure risk
     [[ "$overall_risk" == "info" ]] && overall_risk="low"

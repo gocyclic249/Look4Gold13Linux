@@ -26,8 +26,8 @@ emit_audit_record() {
 
     # Write large fields to temp files to avoid "Argument list too long"
     local tmp_desc tmp_det
-    tmp_desc=$(mktemp)
-    tmp_det=$(mktemp)
+    tmp_desc=$(_mktemp)
+    tmp_det=$(_mktemp)
     # shellcheck disable=SC2064
     trap "rm -f '$tmp_desc' '$tmp_det'" RETURN
 

@@ -243,19 +243,20 @@ _html_web_search_section() {
         select(.keyword == $kw and (.source == "brave_search" or .source == "tavily_search") and .outcome == "found")
     ' "$jsonl_file" 2>/dev/null)
 
-    echo "  <div class=\"source-group\">" >> "$html_file"
+    {
+    echo "  <div class=\"source-group\">"
 
     if [[ -z "$findings" ]]; then
-        echo "    <h3>Web Search</h3>" >> "$html_file"
-        echo "    <p class=\"no-results\">No results</p>" >> "$html_file"
-        echo "  </div>" >> "$html_file"
+        echo "    <h3>Web Search</h3>"
+        echo "    <p class=\"no-results\">No results</p>"
+        echo "  </div>"
         return
     fi
 
     local result_count
     result_count=$(echo "$findings" | wc -l)
-    echo "    <details>" >> "$html_file"
-    echo "      <summary>Web Search <span class=\"count\">(${result_count} results)</span></summary>" >> "$html_file"
+    echo "    <details>"
+    echo "      <summary>Web Search <span class=\"count\">(${result_count} results)</span></summary>"
 
     while IFS= read -r rec; do
         [[ -z "$rec" ]] && continue
@@ -281,23 +282,24 @@ _html_web_search_section() {
             low)      sev_class="low" ;;
         esac
 
-        echo "    <div class=\"finding\">" >> "$html_file"
-        echo "      <span class=\"sev badge badge-${sev_class}\">${sev}</span>" >> "$html_file"
+        echo "    <div class=\"finding\">"
+        echo "      <span class=\"sev badge badge-${sev_class}\">${sev}</span>"
         if [[ -n "$link_url" ]]; then
             local safe_url
             safe_url=$(_sanitize_url "$link_url")
-            echo "      <a href=\"${safe_url}\" target=\"_blank\" rel=\"noopener\">${link_text}</a>" >> "$html_file"
+            echo "      <a href=\"${safe_url}\" target=\"_blank\" rel=\"noopener\">${link_text}</a>"
         else
-            echo "      <strong>${link_text}</strong>" >> "$html_file"
+            echo "      <strong>${link_text}</strong>"
         fi
         if [[ -n "$extra_desc" ]]; then
-            echo "      <div class=\"desc\">${extra_desc}</div>" >> "$html_file"
+            echo "      <div class=\"desc\">${extra_desc}</div>"
         fi
-        echo "    </div>" >> "$html_file"
+        echo "    </div>"
     done <<< "$findings"
 
-    echo "    </details>" >> "$html_file"
-    echo "  </div>" >> "$html_file"
+    echo "    </details>"
+    echo "  </div>"
+    } >> "$html_file"
 }
 
 # Internal helper: write one source subsection into the HTML
@@ -310,26 +312,26 @@ _html_source_section() {
         select(.keyword == $kw and .source == $src and .outcome == "found")
     ' "$jsonl_file" 2>/dev/null)
 
-    echo "  <div class=\"source-group\">" >> "$html_file"
+    {
+    echo "  <div class=\"source-group\">"
 
     if [[ -z "$findings" ]]; then
-        echo "    <h3>${source_label}</h3>" >> "$html_file"
-        echo "    <p class=\"no-results\">No results</p>" >> "$html_file"
-        echo "  </div>" >> "$html_file"
+        echo "    <h3>${source_label}</h3>"
+        echo "    <p class=\"no-results\">No results</p>"
+        echo "  </div>"
         return
     fi
 
     local result_count
     result_count=$(echo "$findings" | wc -l)
-    echo "    <details>" >> "$html_file"
-    echo "      <summary>${source_label} <span class=\"count\">(${result_count} results)</span></summary>" >> "$html_file"
+    echo "    <details>"
+    echo "      <summary>${source_label} <span class=\"count\">(${result_count} results)</span></summary>"
 
     while IFS= read -r rec; do
         [[ -z "$rec" ]] && continue
 
-        local sev desc link_url link_text extra_desc
+        local sev link_url link_text extra_desc
         sev=$(echo "$rec" | jq -r '.severity // "info"')
-        desc=$(echo "$rec" | jq -r '.description // ""')
 
         # Build link and description based on source type
         case "$source_id" in
@@ -379,23 +381,24 @@ _html_source_section() {
             low)      sev_class="low" ;;
         esac
 
-        echo "    <div class=\"finding\">" >> "$html_file"
-        echo "      <span class=\"sev badge badge-${sev_class}\">${sev}</span>" >> "$html_file"
+        echo "    <div class=\"finding\">"
+        echo "      <span class=\"sev badge badge-${sev_class}\">${sev}</span>"
         if [[ -n "$link_url" ]]; then
             local safe_url
             safe_url=$(_sanitize_url "$link_url")
-            echo "      <a href=\"${safe_url}\" target=\"_blank\" rel=\"noopener\">${link_text}</a>" >> "$html_file"
+            echo "      <a href=\"${safe_url}\" target=\"_blank\" rel=\"noopener\">${link_text}</a>"
         else
-            echo "      <strong>${link_text}</strong>" >> "$html_file"
+            echo "      <strong>${link_text}</strong>"
         fi
         if [[ -n "$extra_desc" ]]; then
-            echo "      <div class=\"desc\">${extra_desc}</div>" >> "$html_file"
+            echo "      <div class=\"desc\">${extra_desc}</div>"
         fi
-        echo "    </div>" >> "$html_file"
+        echo "    </div>"
     done <<< "$findings"
 
-    echo "    </details>" >> "$html_file"
-    echo "  </div>" >> "$html_file"
+    echo "    </details>"
+    echo "  </div>"
+    } >> "$html_file"
 }
 
 # Internal helper: write AI analysis subsection for a keyword
@@ -586,22 +589,24 @@ HTMLFINDING
 
     # Research sources (or grok_citations fallback)
     if [[ -n "$ai_sources_json" && "$ai_sources_json" != "[]" && "$ai_sources_json" != "null" ]]; then
-        echo '    <div class="ai-section">' >> "$html_file"
-        echo "      <h4>${sources_label}</h4>" >> "$html_file"
-        echo '      <ul class="ai-sources">' >> "$html_file"
+        {
+        echo '    <div class="ai-section">'
+        echo "      <h4>${sources_label}</h4>"
+        echo '      <ul class="ai-sources">'
         echo "$ai_sources_json" | jq -r '.[]' 2>/dev/null | while IFS= read -r src; do
             local safe_src
             safe_src=$(_html_escape "$src")
             if echo "$src" | grep -q '^https\?://'; then
                 local safe_href
                 safe_href=$(_sanitize_url "$src")
-                echo "        <li><a href=\"${safe_href}\" target=\"_blank\" rel=\"noopener\">${safe_src}</a></li>" >> "$html_file"
+                echo "        <li><a href=\"${safe_href}\" target=\"_blank\" rel=\"noopener\">${safe_src}</a></li>"
             else
-                echo "        <li>${safe_src}</li>" >> "$html_file"
+                echo "        <li>${safe_src}</li>"
             fi
         done
-        echo '      </ul>' >> "$html_file"
-        echo '    </div>' >> "$html_file"
+        echo '      </ul>'
+        echo '    </div>'
+        } >> "$html_file"
     fi
 
     echo '  </div>' >> "$html_file"
