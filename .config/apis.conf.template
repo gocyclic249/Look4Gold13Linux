@@ -16,3 +16,19 @@ OTX_API_KEY=""
 
 # xAI (Grok) API — https://console.x.ai/
 XAI_API_KEY=""
+
+# xAI model override. Default is the latest Grok reasoning model.
+# Set this only if you want to pin to a specific model.
+# XAI_MODEL="grok-4.20-0309-reasoning"
+
+# --- Google Programmable Search Engine scraper ---
+# The Google Custom Search JSON API was deprecated in late 2025. As a
+# workaround, this tool can scrape the public CSE widget using headless
+# chromium + pup. This is a third, high-precision search engine scoped to the
+# "Sites to search" list you configure in your CSE at:
+#   https://programmablesearchengine.google.com/
+#
+# Runtime deps when enabled: chromium (or chromium-browser / google-chrome)
+# and pup (https://github.com/ericchiang/pup). Setup.sh will check for both.
+ENABLE_CSE_SCRAPE="false"
+CSE_ID=""

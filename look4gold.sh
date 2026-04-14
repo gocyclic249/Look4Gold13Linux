@@ -90,6 +90,7 @@ source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/audit.sh"
 source "$SCRIPT_DIR/lib/brave.sh"
 source "$SCRIPT_DIR/lib/tavily.sh"
+source "$SCRIPT_DIR/lib/cse_scrape.sh"
 source "$SCRIPT_DIR/lib/nist.sh"
 source "$SCRIPT_DIR/lib/otx.sh"
 source "$SCRIPT_DIR/lib/fourchan.sh"
@@ -168,6 +169,11 @@ log_info "Dry run: $DRY_RUN"
 # --- Check API quotas (always run, even in dry-run, to validate keys) ---
 check_api_quotas "$NO_AI" "$DRY_RUN" || exit 1
 
+# --- CSE scraper dependency check (only fires when ENABLE_CSE_SCRAPE=true) ---
+# Aborts the scan if the user opted in but chromium/pup/CSE_ID are missing,
+# rather than silently skipping the engine they asked for.
+cse_check_deps || exit 1
+
 # --- SIGINT/TERM handler: write SCAN_END record before exiting ---
 _shutdown() {
     log_warn "Interrupted — writing final scan record..."
@@ -184,6 +190,8 @@ for keyword in "${KEYWORDS[@]}"; do
 
     brave_search "$keyword" || true
     tavily_search "$keyword" || true
+    tavily_precision_search "$keyword" || true
+    cse_scrape_search "$keyword" || true
     nist_search "$keyword" || true
     otx_search "$keyword" || true
     fourchan_search "$keyword" || true

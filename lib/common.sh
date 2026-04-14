@@ -206,6 +206,53 @@ url_encode() {
     printf '%s' "$string" | jq -sRr @uri
 }
 
+# Extract site: hostnames from a dork group or query string.
+# Returns space-separated, deduplicated, lowercase hostnames with paths stripped.
+# Example input: '"dell" (site:pastebin.com OR site:github.com/foo)'
+# Example output: 'github.com pastebin.com'
+_extract_sites_from_dork_group() {
+    local group="$1"
+    printf '%s\n' "$group" \
+        | grep -oE 'site:[A-Za-z0-9.-]+' \
+        | sed 's/^site://' \
+        | tr '[:upper:]' '[:lower:]' \
+        | sort -u \
+        | tr '\n' ' ' \
+        | sed 's/ *$//'
+}
+
+# Filter a JSON array of {url,...} objects to only those whose URL host
+# matches (or is a subdomain of) one of the allowed hostnames.
+# When allowed_hosts is empty, the input is returned unchanged so dork groups
+# without site: restrictions pass through as a no-op.
+# Usage: _filter_results_by_sites '<json_array>' 'host1 host2 host3'
+_filter_results_by_sites() {
+    local json_array="$1"
+    local allowed_hosts="$2"
+
+    if [[ -z "$allowed_hosts" ]]; then
+        printf '%s' "$json_array"
+        return 0
+    fi
+
+    local hosts_json
+    # shellcheck disable=SC2086
+    hosts_json=$(printf '%s\n' $allowed_hosts | jq -Rsc 'split("\n") | map(select(length > 0))')
+
+    jq -c --argjson allowed "$hosts_json" '
+        def host_of(u):
+            (u // "")
+            | sub("^https?://"; "")
+            | sub("/.*"; "")
+            | sub(":[0-9]+$"; "")
+            | ascii_downcase;
+        map(
+            host_of(.url) as $h
+            | select(any($allowed[]; . as $a | $h == $a or ($h | endswith("." + $a))))
+        )
+    ' <<<"$json_array"
+}
+
 # Check API key validity and report remaining quotas before scanning
 check_api_quotas() {
     local no_ai="${1:-false}"
@@ -219,9 +266,8 @@ check_api_quotas() {
     # --- Brave Search ---
     if [[ -n "${BRAVE_API_KEY:-}" ]]; then
         total=$((total + 1))
-        local brave_hdr_file brave_code
-        brave_hdr_file=$(_mktemp)
-        brave_code=$(curl -s -o /dev/null -D "$brave_hdr_file" -w "%{http_code}" \
+        local brave_code
+        brave_code=$(curl -s -o /dev/null -w "%{http_code}" \
             --proto =https \
             --max-time 15 --max-redirs 5 \
             -H "Accept: application/json" \
@@ -231,21 +277,8 @@ check_api_quotas() {
             --compressed 2>/dev/null) || brave_code="000"
 
         if [[ "$brave_code" == "200" || "$brave_code" == "429" ]]; then
-            local remaining limit
-            remaining=$(grep -i '^x-ratelimit-remaining:' "$brave_hdr_file" | head -1 | sed 's/.*: *//' | tr -d '\r' | cut -d',' -f2 | tr -d ' ')
-            limit=$(grep -i '^x-ratelimit-limit:' "$brave_hdr_file" | head -1 | sed 's/.*: *//' | tr -d '\r' | cut -d',' -f2 | tr -d ' ')
-            if [[ -n "$remaining" && -n "$limit" ]]; then
-                if [[ "$remaining" == "0" ]]; then
-                    _api_status[Brave]="quota exhausted (${remaining}/${limit})"
-                    log_warn "Brave Search: monthly quota exhausted"
-                else
-                    _api_status[Brave]="ready (${remaining}/${limit} remaining)"
-                    ready=$((ready + 1))
-                fi
-            else
-                _api_status[Brave]="ready"
-                ready=$((ready + 1))
-            fi
+            _api_status[Brave]="ready"
+            ready=$((ready + 1))
         elif [[ "$brave_code" == "401" || "$brave_code" == "403" ]]; then
             _api_status[Brave]="invalid key (HTTP $brave_code)"
             log_error "Brave Search: invalid API key (HTTP $brave_code)"
@@ -256,7 +289,6 @@ check_api_quotas() {
             _api_status[Brave]="unexpected HTTP $brave_code"
             log_warn "Brave Search: unexpected HTTP $brave_code"
         fi
-        rm -f "$brave_hdr_file"
     else
         _api_status[Brave]="no key configured"
     fi

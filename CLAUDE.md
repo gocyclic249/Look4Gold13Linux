@@ -88,9 +88,13 @@ Scans write to `output/YYYYMMDDHHMMSS/` with `scan.jsonl`, `scan.csv`, `scan.htm
 - Output files created atomically with `install -m 600` (no world-readable window)
 - Temp files use `_mktemp` which writes to a secure per-process directory (not `/tmp`)
 - HTML reports escape all 5 critical entities and sanitize URLs
-- No new runtime dependencies — stick to bash/curl/jq
+- Keep runtime dependencies minimal. The core required set is `bash`, `curl`, `jq`. Two additional dependencies are allowed for the CSE scraper (`lib/cse_scrape.sh`) and are **optional** — the feature is gated by `ENABLE_CSE_SCRAPE=false` by default:
+  - `chromium` (or `chromium-browser` / `google-chrome`) — used by `lib/cse_scrape.sh` to dump the Google Programmable Search widget via `--headless --dump-dom`. Required because Google deprecated the Custom Search JSON API in late 2025; there is no HTTP-only path to CSE results anymore.
+  - `pup` (https://github.com/ericchiang/pup) — CSS-selector HTML parser used to extract URLs and snippets from the dumped DOM.
+  - Both must be present on `$PATH` when `ENABLE_CSE_SCRAPE=true`; otherwise `look4gold.sh` aborts at startup with a clear error. When the flag is `false`, neither is needed.
+- Do not add further runtime dependencies without the same level of justification. If a change adds a dep, update this list and the README dependency section in the same PR.
 - Keywords must be unclassified/publicly releasable (sent to third-party APIs)
-- API key input in `setup.sh` uses `read -rs` (hidden from terminal)
+- API key input in `setup.sh` uses `read -rs` (hidden from terminal); non-sensitive values like `CSE_ID` use plain `read`
 
 ## Adding a New Search Module
 

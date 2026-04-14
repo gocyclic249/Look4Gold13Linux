@@ -31,6 +31,14 @@ OVERALL:
 - PATTERN ANALYSIS (coordinated campaigns?)
 - RESEARCH SOURCES list
 
+OUTPUT DISCIPLINE (follow strictly, these override general professional tone):
+
+- CITATION REQUIREMENT. Every sentence in detailed_assessment that makes a factual claim about credibility, location specificity, actor identification, capability, or intent MUST cite at least one finding by index as [finding #N]. Multiple citations allowed: [finding #2, #5]. Uncited speculation is prohibited. Remove claims you cannot cite.
+
+- PATTERN GATE. A pattern_analysis entry (if the schema includes one) MUST involve two or more distinct findings, listed in its findings_involved array. If no cross-finding patterns exist, return an empty array. Do not restate single-finding observations as patterns. A valid pattern describes coordinated activity that only becomes visible across two or more findings — e.g., the same actor appearing in multiple venues, or a specific threat escalation pattern.
+
+- EXECUTIVE SUMMARY LEAD. The first sentence of executive_summary MUST name the single most consequential finding from this scan by its specific identifier (URL, source, actor name, or venue), and state why it matters. If nothing rises above info, say so plainly. Generic openers like "This assessment identified several findings..." are prohibited.
+
 Respond ONLY in JSON (no markdown):
 {
   "overall_threat_level": "critical|high|medium|low|info",

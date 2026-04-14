@@ -31,6 +31,9 @@ site:pastebin.com OR site:github.com OR site:gist.github.com OR site:reddit.com
 site:dropbox.com/s/ OR site:docs.google.com OR site:archive.org OR site:paste.ee
 site:ghostbin.com OR site:dpaste.org OR site:rentry.co OR site:justpaste.it
 site:controlc.com OR site:privatebin.net OR site:0bin.net OR site:hastebin.com OR site:ideone.com
+site:gitlab.com OR site:bitbucket.org OR site:codeberg.org OR site:sourcegraph.com
+site:paste.debian.net OR site:dpaste.com OR site:pastes.io OR site:termbin.com OR site:paste2.org
+site:trello.com OR site:notion.site OR site:scribd.com OR site:slideshare.net
 github code exposed repository
 
 # --- Breach/threat dork groups ---

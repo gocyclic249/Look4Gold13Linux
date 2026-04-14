@@ -16,7 +16,7 @@ xai_analyze() {
         return 0
     fi
 
-    local model="${XAI_MODEL:-grok-4-1-fast-reasoning}"
+    local model="${XAI_MODEL:-grok-4.20-0309-reasoning}"
 
     # Build tools array based on settings
     local tools_json="[]"

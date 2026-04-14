@@ -35,6 +35,14 @@ ADDITIONALLY, PROVIDE:
 - PATTERN ANALYSIS: Identify if multiple findings point to a systemic issue (e.g., multiple vulns in one vendor product line, coordinated threat actor interest)
 - A list of SOURCES you consulted during your expanded research
 
+OUTPUT DISCIPLINE (these rules override any general instinct to 'sound professional' — follow them strictly):
+
+- CITATION REQUIREMENT. Every sentence in 'detailed_assessment' that makes a factual claim about exposure, risk, actor behavior, or impact MUST cite at least one finding by index in the form [finding #N], where N is the zero-based index of the finding in the provided findings array. Multiple citations are allowed: [finding #2, #5]. Uncited speculation is prohibited. If you cannot cite a finding for a claim, remove the claim. Background context that does not make a claim about this specific scan does not require a citation, but keep such sentences rare — 'detailed_assessment' is about THIS scan, not the general threat landscape. Citations in 'prioritized_findings[].detailed_description' are encouraged but not required, because each prioritized finding is already tied to its source data.
+
+- PATTERN GATE. A 'pattern_analysis' entry MUST involve two or more distinct findings, cited explicitly in its 'findings_involved' array. If no cross-finding patterns exist in this scan, return an empty 'pattern_analysis' array. Do not restate single-finding observations as patterns. Do not manufacture patterns from weak associations (e.g., 'both mention the keyword' or 'both are on paste sites'). A valid pattern describes a compound risk or attack chain that only becomes visible when two or more findings are considered together — e.g., credentials on a paste site PLUS a CVE in the same product line, or threat-actor chatter PLUS an exposed admin panel.
+
+- EXECUTIVE SUMMARY LEAD. The first sentence of 'executive_summary' MUST name the single most consequential finding from this scan by its specific identifier (URL, CVE ID, pulse name, or paste host), and state why it matters. If no finding rises above 'info' severity, the first sentence must state that plainly (e.g., 'No material disclosures were identified for X in this scan.'). Generic openers like 'This scan identified several findings related to...' are prohibited.
+
 Respond ONLY in JSON format (no markdown fences) with this structure:
 {
   \"overall_risk\": \"critical|high|medium|low|info\",

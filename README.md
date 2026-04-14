@@ -38,10 +38,19 @@ Each scan produces:
 
 ## Requirements
 
+**Required:**
+
 - **bash** 4.0+
 - **curl**
 - **jq**
 - At least one API key (Brave, Tavily, NIST NVD, OTX, or xAI); 4chan archive search requires Brave or Tavily
+
+**Optional (only needed when `ENABLE_CSE_SCRAPE=true` in `apis.conf`):**
+
+- **chromium** (or `chromium-browser` / `google-chrome`) — used to dump the Google Programmable Search widget's rendered DOM. Install: `sudo apt install chromium-browser` or `snap install chromium`.
+- **pup** — CSS-selector HTML parser used to extract results from the dumped DOM. Install: `go install github.com/ericchiang/pup@latest` or download from https://github.com/ericchiang/pup/releases.
+
+When `ENABLE_CSE_SCRAPE=false` (the default), neither of these is required.
 
 ## Quick Start
 
@@ -72,8 +81,27 @@ All API keys are free tier or have free options:
 | NIST NVD | 50 requests/30 seconds | https://nvd.nist.gov/developers/request-an-api-key |
 | AlienVault OTX | Unlimited (community) | https://otx.alienvault.com/api |
 | xAI (Grok) | Usage-based credits | https://console.x.ai/ |
+| Google Programmable Search (scraped) | No key required, `cx` ID only | https://programmablesearchengine.google.com/ |
 
 Run `bash setup.sh` to configure keys interactively, or copy `.config/apis.conf.template` to `.config/apis.conf` and fill in manually.
+
+### Google Programmable Search Engine (optional, high-precision)
+
+The Google Custom Search JSON API was deprecated in late 2025. Look4Gold can still use Google as a precision engine by scraping the public Programmable Search widget via headless chromium and `pup`. This is optional and disabled by default.
+
+To enable it:
+
+1. **Install dependencies** — see the "Optional" section under Requirements above (`chromium` and `pup`).
+2. **Create a CSE** at https://programmablesearchengine.google.com/. The whole value of this engine comes from the curated "Sites to search" list — configure it with the disclosure/paste/code hosts you care about (overlap with the precision domain list in `lib/tavily.sh` is a reasonable starting point).
+3. **Turn off "Search the entire web"** in the CSE settings — the engine should only search your curated list.
+4. **Copy your CSE's `cx` ID** (e.g. `a1b2c3d4e5f6g7h8i`) into `apis.conf`:
+   ```
+   ENABLE_CSE_SCRAPE="true"
+   CSE_ID="a1b2c3d4e5f6g7h8i"
+   ```
+5. Run a scan. CSE results appear in `scan.jsonl` with `source="google_cse_scrape"`.
+
+If Google changes the widget markup, the scraper logs a stale-selector warning so you know to update the CSS selectors in `lib/cse_scrape.sh`.
 
 ## Usage
 

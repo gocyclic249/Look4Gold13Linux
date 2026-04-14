@@ -79,11 +79,30 @@ _brave_query() {
         return 1
     fi
 
-    local result_count
-    result_count=$(echo "$body" | jq -r '.web.results | length // 0' 2>/dev/null)
+    # Normalize results into a uniform array so the site filter operates on
+    # a single shape regardless of the search engine.
+    local results_json total_count
+    results_json=$(echo "$body" | jq -c '[(.web.results // [])[] | {title: (.title // ""), url: (.url // ""), description: (.description // "")}]')
+    total_count=$(echo "$results_json" | jq 'length')
+
+    if [[ "$total_count" -eq 0 ]]; then
+        log_debug "Brave Search: no results for '$keyword' (dork: $dork_label)"
+        return 0
+    fi
+
+    # Client-side enforcement of any site: restriction in the query. When the
+    # query is keyword-only, allowed_hosts is empty and the filter is a no-op.
+    local allowed_hosts filtered_json result_count
+    allowed_hosts=$(_extract_sites_from_dork_group "$query")
+    filtered_json=$(_filter_results_by_sites "$results_json" "$allowed_hosts")
+    result_count=$(echo "$filtered_json" | jq 'length')
+
+    if [[ -n "$allowed_hosts" && "$result_count" -lt "$total_count" ]]; then
+        log_debug "brave: filtered site-scoped group '$dork_label': $total_count -> $result_count (allowed: $allowed_hosts)"
+    fi
 
     if [[ "$result_count" -eq 0 ]]; then
-        log_debug "Brave Search: no results for '$keyword' (dork: $dork_label)"
+        log_debug "Brave Search: no on-site results for '$keyword' (dork: $dork_label)"
         return 0
     fi
 
@@ -91,9 +110,9 @@ _brave_query() {
 
     local i title url description
     for (( i=0; i<result_count; i++ )); do
-        title=$(echo "$body" | jq -r ".web.results[$i].title // \"\"" 2>/dev/null)
-        url=$(echo "$body" | jq -r ".web.results[$i].url // \"\"" 2>/dev/null)
-        description=$(echo "$body" | jq -r ".web.results[$i].description // \"\"" 2>/dev/null)
+        title=$(echo "$filtered_json" | jq -r ".[$i].title // \"\"" 2>/dev/null)
+        url=$(echo "$filtered_json" | jq -r ".[$i].url // \"\"" 2>/dev/null)
+        description=$(echo "$filtered_json" | jq -r ".[$i].description // \"\"" 2>/dev/null)
 
         local details
         details=$(jq -nc \
