@@ -1,6 +1,26 @@
 #!/usr/bin/env bash
 # lib/nist.sh — NIST NVD API module
 
+# Performs a single NVD request. Args: url, use_key (true|false).
+# Echoes the raw response: body followed by a final line holding the HTTP
+# status code (caller splits with tail -n1 / sed '$d').
+_nist_request() {
+    local url="$1"
+    local use_key="$2"
+
+    local -a auth=()
+    if [[ "$use_key" == "true" && -n "${NIST_API_KEY:-}" ]]; then
+        auth=(-H "apiKey: $NIST_API_KEY")
+    fi
+
+    curl -s -w "\n%{http_code}" \
+        --proto =https \
+        --max-time 30 --max-redirs 5 \
+        "${auth[@]}" \
+        "$url" \
+        2>/dev/null
+}
+
 nist_search() {
     local keyword="$1"
 
@@ -25,16 +45,22 @@ nist_search() {
     pub_end="$(date -u '+%Y-%m-%dT%H:%M:%S.000')"
     pub_start="$(date -u -d "${days_back} days ago" '+%Y-%m-%dT%H:%M:%S.000')"
 
-    local response http_code body
-    response=$(curl -s -w "\n%{http_code}" \
-        --proto =https \
-        --max-time 30 --max-redirs 5 \
-        -H "apiKey: $NIST_API_KEY" \
-        "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${encoded_keyword}&pubStartDate=${pub_start}&pubEndDate=${pub_end}" \
-        2>/dev/null)
+    local url response body http_code
+    url="https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${encoded_keyword}&pubStartDate=${pub_start}&pubEndDate=${pub_end}"
 
+    response=$(_nist_request "$url" "true")
     http_code=$(echo "$response" | tail -n1)
     body=$(echo "$response" | sed '$d')
+
+    # NVD returns 404 (not 401/403) when the apiKey is invalid, expired, or
+    # not yet activated. Detect that specific case, warn clearly, and retry
+    # once unauthenticated (works but is rate-limited to ~5 req/30s).
+    if [[ "$http_code" -eq 404 && -n "${NIST_API_KEY:-}" ]]; then
+        log_warn "NIST NVD returned HTTP 404 with an API key set — the key is likely invalid, expired, or not yet activated (NVD uses 404 for bad keys, not 401/403). Retrying unauthenticated (rate-limited)."
+        response=$(_nist_request "$url" "false")
+        http_code=$(echo "$response" | tail -n1)
+        body=$(echo "$response" | sed '$d')
+    fi
 
     if [[ "$http_code" -ne 200 ]]; then
         log_error "NIST NVD API returned HTTP $http_code for '$keyword'"
