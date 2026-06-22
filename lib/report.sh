@@ -31,9 +31,62 @@ _sanitize_url() {
     _html_escape "$url"
 }
 
+# Inline Markdown -> HTML on text that is ALREADY html-escaped (caller contract:
+# _md_to_html escapes before calling). Handles citation links [[n]](url), links
+# [t](url), `code`, **bold**, *italic*. Only http(s) URLs are linkified, so
+# javascript:/data: schemes can never become live hrefs. As defense-in-depth the
+# URL char class excludes " < > and backtick, so even on unescaped input a quote
+# cannot break out of the double-quoted href attribute.
+_md_inline() {
+    [[ $# -eq 1 ]] || return 1   # input assertion (Power of 10 rule 5)
+    printf '%s' "$1" | sed -E \
+        -e 's#\[\[([0-9]+)\]\]\((https?:[^)"<>` ]+)\)#<sup><a href="\2" target="_blank" rel="noopener">[\1]</a></sup>#g' \
+        -e 's#\[([^][]+)\]\((https?:[^)"<>` ]+)\)#<a href="\2" target="_blank" rel="noopener">\1</a>#g' \
+        -e 's#`([^`]+)`#<code>\1</code>#g' \
+        -e 's#\*\*([^*]+)\*\*#<strong>\1</strong>#g' \
+        -e 's#\*([^*]+)\*#<em>\1</em>#g'
+}
+
+# Block-level Markdown -> HTML for AI free-text (xAI returns Markdown in
+# raw_analysis/detailed_assessment). Escapes first (XSS-safe), then converts a
+# safe subset: ATX headings, -/* and ordered lists, and blank-line paragraphs.
+_md_to_html() {
+    [[ $# -eq 1 ]] || return 1   # input assertion (Power of 10 rule 5)
+    local escaped para="" out="" list_tag="" line stripped tag want
+    escaped=$(_html_escape "$1")
+    local -i guard=0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        guard+=1; (( guard > 5000 )) && break   # bounded loop (Power of 10 rule 2)
+        line="${line%$'\r'}"
+        stripped="${line#"${line%%[![:space:]]*}"}"   # left-trim
+        if [[ -z "$stripped" ]]; then
+            [[ -n "$para" ]] && { out+="<p>$(_md_inline "$para")</p>"; para=""; }
+            [[ -n "$list_tag" ]] && { out+="</$list_tag>"; list_tag=""; }
+        elif [[ "$stripped" =~ ^(#{1,6})[[:space:]]+(.+)$ ]]; then
+            [[ -n "$para" ]] && { out+="<p>$(_md_inline "$para")</p>"; para=""; }
+            [[ -n "$list_tag" ]] && { out+="</$list_tag>"; list_tag=""; }
+            tag=h5; (( ${#BASH_REMATCH[1]} <= 2 )) && tag=h4
+            out+="<$tag>$(_md_inline "${BASH_REMATCH[2]}")</$tag>"
+        elif [[ "$stripped" =~ ^([-*]|[0-9]+\.)[[:space:]]+(.+)$ ]]; then
+            [[ -n "$para" ]] && { out+="<p>$(_md_inline "$para")</p>"; para=""; }
+            want=ul; [[ "${BASH_REMATCH[1]}" == *. ]] && want=ol
+            [[ "$list_tag" != "$want" ]] && { [[ -n "$list_tag" ]] && out+="</$list_tag>"; out+="<$want>"; list_tag="$want"; }
+            out+="<li>$(_md_inline "${BASH_REMATCH[2]}")</li>"
+        else
+            [[ -n "$list_tag" ]] && { out+="</$list_tag>"; list_tag=""; }
+            [[ -n "$para" ]] && para+=" $stripped" || para="$stripped"
+        fi
+    done <<< "$escaped"
+    [[ -n "$para" ]] && out+="<p>$(_md_inline "$para")</p>"
+    [[ -n "$list_tag" ]] && out+="</$list_tag>"
+    printf '%s' "$out"
+}
+
 generate_csv() {
     local jsonl_file="$1"
-    local csv_file="${jsonl_file%.jsonl}.csv"
+    # Optional $2 lets the caller name the report explicitly (e.g. csv<stamp>.csv);
+    # otherwise derive from the JSONL path for backward compatibility.
+    local csv_file="${2:-${jsonl_file%.jsonl}.csv}"
 
     if [[ ! -f "$jsonl_file" ]]; then
         log_warn "CSV report: JSONL file not found: $jsonl_file"
@@ -59,7 +112,9 @@ generate_csv() {
 
 generate_html() {
     local jsonl_file="$1"
-    local html_file="${jsonl_file%.jsonl}.html"
+    # Optional $2 lets the caller name the report explicitly (e.g. web<stamp>.html);
+    # otherwise derive from the JSONL path for backward compatibility.
+    local html_file="${2:-${jsonl_file%.jsonl}.html}"
 
     if [[ ! -f "$jsonl_file" ]]; then
         log_warn "HTML report: JSONL file not found: $jsonl_file"
@@ -116,6 +171,21 @@ generate_html() {
              padding: 1.25rem; margin-bottom: 2rem; }
   .ai-box h3 { font-size: 0.95rem; color: var(--accent); margin-bottom: 0.5rem; }
   .ai-box p { color: var(--muted); font-size: 0.9rem; }
+  /* Rendered Markdown (AI summary / detailed assessment) */
+  .ai-summary, .ai-detail { color: var(--muted); font-size: 0.9rem; line-height: 1.65; }
+  .ai-summary p, .ai-detail p { margin-bottom: 0.6rem; }
+  .ai-summary h4, .ai-detail h4 { font-size: 0.92rem; color: var(--accent);
+                                   margin: 0.9rem 0 0.4rem; }
+  .ai-summary h5, .ai-detail h5 { font-size: 0.86rem; color: var(--text);
+                                   margin: 0.7rem 0 0.3rem; }
+  .ai-summary ul, .ai-summary ol, .ai-detail ul, .ai-detail ol { margin: 0.3rem 0 0.6rem 1.3rem; }
+  .ai-summary li, .ai-detail li { margin-bottom: 0.25rem; }
+  .ai-summary strong, .ai-detail strong { color: var(--text); }
+  .ai-summary code, .ai-detail code { background: var(--bg); border: 1px solid var(--border);
+                                       border-radius: 3px; padding: 0 0.25rem; font-size: 0.82rem; }
+  .ai-summary a, .ai-detail a { color: var(--accent); text-decoration: none; }
+  .ai-summary a:hover, .ai-detail a:hover { text-decoration: underline; }
+  .ai-summary sup a, .ai-detail sup a { font-size: 0.72rem; }
   .keyword-section { margin-bottom: 2.5rem; }
   .keyword-section h2 { font-size: 1.2rem; border-bottom: 1px solid var(--border);
                          padding-bottom: 0.4rem; margin-bottom: 1rem; }
@@ -464,18 +534,19 @@ _html_ai_section() {
     esac
 
     local safe_summary safe_detailed
-    safe_summary=$(_html_escape "$ai_summary")
+    # AI text is Markdown — render it to HTML (escapes internally first).
+    safe_summary=$(_md_to_html "$ai_summary")
     # Collapse 3+ consecutive newlines to 2 (prevents blank space in HTML)
     local collapsed_detailed="$ai_detailed"
     while [[ "$collapsed_detailed" == *$'\n\n\n'* ]]; do
         collapsed_detailed="${collapsed_detailed//$'\n\n\n'/$'\n\n'}"
     done
-    safe_detailed=$(_html_escape "$collapsed_detailed")
+    safe_detailed=$(_md_to_html "$collapsed_detailed")
 
     cat >> "$html_file" <<HTMLAI
   <div class="ai-box">
     <h3>xAI Risk Assessment <span class="badge badge-${risk_class}">${ai_risk}</span></h3>
-    <p>${safe_summary}</p>
+    <div class="ai-summary">${safe_summary}</div>
 HTMLAI
 
     # Detailed assessment

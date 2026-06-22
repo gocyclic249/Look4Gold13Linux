@@ -31,7 +31,7 @@ bats test/bats/audit.bats             # Single test file
 ./test/run_tests.sh                    # Test runner wrapper
 
 # Validate output
-jq . output/*/scan.jsonl              # Check JSONL is valid
+jq . output/*/json*.jsonl             # Check JSONL is valid
 ```
 
 ## Architecture
@@ -65,7 +65,7 @@ Custom AI prompts use `SYSTEM_PROMPT` and `USER_MESSAGE_TEMPLATE` variables with
 
 ### Output
 
-Scans write to `output/YYYYMMDDHHMMSS/` with `scan.jsonl`, `scan.csv`, `scan.html`. All output files are `chmod 600`. Each JSONL record has mandatory AU-3 fields: `timestamp`, `event_type`, `source`, `keyword`, `outcome`, `severity`, `description`, `details`, `control_ref`, `scan_id`.
+Scans write to a per-day folder `output/YYYYMMDD/` with type-prefixed, minute-stamped files: `jsonYYYYMMDDHHMM.jsonl`, `csvYYYYMMDDHHMM.csv`, `webYYYYMMDDHHMM.html` (a second scan in the same minute overwrites). All output files are `chmod 600`. Each JSONL record has mandatory AU-3 fields: `timestamp`, `event_type`, `source`, `keyword`, `outcome`, `severity`, `description`, `details`, `control_ref`, `scan_id`.
 
 ## Code Conventions
 

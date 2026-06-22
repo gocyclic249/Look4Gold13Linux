@@ -149,13 +149,20 @@ fi
 
 mkdir -p "$OUTPUT_DIR"
 
-# Create per-scan folder with date-time
-SCAN_FOLDER="$OUTPUT_DIR/$(date -u '+%Y%m%d%H%M%S')"
+# Create per-day folder; files within are stamped to the minute and prefixed by type.
+# Layout: output/YYYYMMDD/{json,csv,web}YYYYMMDDHHMM.{jsonl,csv,html}
+SCAN_DAY="$(date -u '+%Y%m%d')"
+SCAN_STAMP="$(date -u '+%Y%m%d%H%M')"
+SCAN_FOLDER="$OUTPUT_DIR/$SCAN_DAY"
 mkdir -p "$SCAN_FOLDER"
 chmod 700 "$SCAN_FOLDER" 2>/dev/null || true
 
-# Create scan files with restrictive permissions (atomic — no world-readable window)
-AUDIT_OUTPUT_FILE="$SCAN_FOLDER/scan.jsonl"
+# Per-type report paths (strict HHMM: a second scan in the same minute overwrites).
+AUDIT_OUTPUT_FILE="$SCAN_FOLDER/json${SCAN_STAMP}.jsonl"
+CSV_OUTPUT_FILE="$SCAN_FOLDER/csv${SCAN_STAMP}.csv"
+HTML_OUTPUT_FILE="$SCAN_FOLDER/web${SCAN_STAMP}.html"
+
+# Create JSONL with restrictive permissions (atomic — no world-readable window)
 export AUDIT_OUTPUT_FILE
 install -m 600 /dev/null "$AUDIT_OUTPUT_FILE"
 
@@ -238,8 +245,8 @@ end_scan_record
 CSV_REPORT=""
 HTML_REPORT=""
 if [[ "$DRY_RUN" == "false" && -f "$AUDIT_OUTPUT_FILE" ]]; then
-    CSV_REPORT=$(generate_csv "$AUDIT_OUTPUT_FILE") || true
-    HTML_REPORT=$(generate_html "$AUDIT_OUTPUT_FILE") || true
+    CSV_REPORT=$(generate_csv "$AUDIT_OUTPUT_FILE" "$CSV_OUTPUT_FILE") || true
+    HTML_REPORT=$(generate_html "$AUDIT_OUTPUT_FILE" "$HTML_OUTPUT_FILE") || true
     # Restrict report file permissions (scan results may contain sensitive findings)
     [[ -n "$CSV_REPORT" && -f "$CSV_REPORT" ]]   && chmod 600 "$CSV_REPORT"
     [[ -n "$HTML_REPORT" && -f "$HTML_REPORT" ]] && chmod 600 "$HTML_REPORT"

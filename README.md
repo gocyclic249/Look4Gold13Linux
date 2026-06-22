@@ -99,7 +99,7 @@ To enable it:
    ENABLE_CSE_SCRAPE="true"
    CSE_ID="a1b2c3d4e5f6g7h8i"
    ```
-5. Run a scan. CSE results appear in `scan.jsonl` with `source="google_cse_scrape"`.
+5. Run a scan. CSE results appear in the `json*.jsonl` audit file with `source="google_cse_scrape"`.
 
 If Google changes the widget markup, the scraper logs a stale-selector warning so you know to update the CSS selectors in `lib/cse_scrape.sh`.
 
@@ -162,17 +162,21 @@ bash look4gold.sh --dorks-file .config/dorks-threat.template --prompt-file .conf
 ```
 
 #### Output Structure
-Scans create folders: `output/YYYYMMDDHHMMSS/`
-- `scan.jsonl`: Audit records
-- `scan.csv`: Spreadsheet summary
-- `scan.html`: Web report
+Scans write into a per-day folder, with each file prefixed by type and stamped to the minute:
+`output/YYYYMMDD/{json,csv,web}YYYYMMDDHHMM.{jsonl,csv,html}`
+- `jsonYYYYMMDDHHMM.jsonl`: Audit records
+- `csvYYYYMMDDHHMM.csv`: Spreadsheet summary
+- `webYYYYMMDDHHMM.html`: Web report
+
+Multiple scans per day share the day folder; a second scan in the same minute overwrites.
 
 **Viewing Results**:
 ```bash
-# Latest scan folder
+# Latest scan in the newest day folder (json*/csv*/web* share the same HHMM stamp)
 FOLDER=$(ls -td output/*/ | head -1)
-cat "$FOLDER/scan.jsonl" | jq '.event_type, .outcome, .keyword'
-open "$FOLDER/scan.html"  # On macOS
+JSONL=$(ls -t "$FOLDER"/json*.jsonl | head -1)
+cat "$JSONL" | jq '.event_type, .outcome, .keyword'
+open "$FOLDER/web$(basename "$JSONL" .jsonl | sed 's/^json//').html"  # On macOS
 ```
 
 ### Automation & Scheduling
@@ -189,8 +193,8 @@ Check logs for issues:
 # Recent scans
 ls -la output/ | tail -10
 
-# View latest scan logs
-tail -f output/$(ls -td output/*/ | head -1)/scan.jsonl | jq '.event_type, .outcome'
+# View latest scan logs (newest json* file in the newest day folder)
+tail -f "$(ls -t "$(ls -td output/*/ | head -1)"/json*.jsonl | head -1)" | jq '.event_type, .outcome'
 ```
 
 ## Detailed Configuration
