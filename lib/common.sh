@@ -29,6 +29,89 @@ _mktemp() {
     mktemp "$_SECURE_TMPDIR/tmp.XXXXXX"
 }
 
+# --- HTTP request helper: bounded retry, backoff, throttle -----------------
+# Usage: http_request METHOD URL CURL_ARGS_ARRAY_NAME [BODY]
+#   CURL_ARGS_ARRAY_NAME is the *name* of a bash array of per-call curl args
+#   (auth headers, Accept, --compressed, ...). BODY, if given, is sent via -d.
+# Echoes: response body, then a final line with the HTTP status code (same
+# convention as the old inline curl blocks). "000" on network failure or
+# exhausted retries. Retries 429/5xx/000 (and 403 with Retry-After) up to
+# RETRY_MAX_ATTEMPTS with exponential backoff (RETRY_BACKOFF_BASE * 2^(n-1),
+# capped 60s); an integer Retry-After header overrides the computed backoff.
+http_request() {
+    local method="$1"
+    local url="$2"
+    local -n _hr_args="$3"
+    local body="${4:-}"
+
+    local max_attempts="${RETRY_MAX_ATTEMPTS:-3}"
+    local timeout="${API_TIMEOUT:-30}"
+    local backoff_base="${RETRY_BACKOFF_BASE:-1}"
+    local throttle="${HTTP_THROTTLE_SECONDS:-0.2}"
+
+    # Guard against a misconfigured attempt count (rule #2: bounded loop).
+    local ceiling=20
+    (( max_attempts > ceiling )) && max_attempts=$ceiling
+    (( max_attempts < 1 )) && max_attempts=1
+
+    local attempt=1 response http_code hdr_file retry_after delay retryable
+    while (( attempt <= max_attempts )); do
+        hdr_file="$(_mktemp)"
+        local -a cmd=(curl -s -w $'\n%{http_code}'
+            --proto "=https" --max-time "$timeout" --max-redirs 5
+            -X "$method" -D "$hdr_file" "${_hr_args[@]}")
+        [[ -n "$body" ]] && cmd+=(-d "$body")
+        cmd+=("$url")
+
+        response="$("${cmd[@]}" 2>/dev/null)" || response=$'\n000'
+        http_code="$(printf '%s' "$response" | tail -n1)"
+        retry_after="$(_hr_retry_after "$hdr_file")"
+        rm -f "$hdr_file"
+
+        retryable=false
+        case "$http_code" in
+            000|429)      retryable=true ;;
+            5[0-9][0-9])  retryable=true ;;
+            403)          [[ -n "$retry_after" ]] && retryable=true ;;
+        esac
+
+        if [[ "$retryable" == "false" ]] || (( attempt >= max_attempts )); then
+            _hr_sleep "$throttle"
+            printf '%s' "$response"
+            return 0
+        fi
+
+        if [[ -n "$retry_after" ]]; then
+            delay="$retry_after"
+        else
+            delay=$(( backoff_base * (2 ** (attempt - 1)) ))
+        fi
+        (( delay > 60 )) && delay=60
+        log_debug "http_request: HTTP $http_code (attempt $attempt/$max_attempts) — retry in ${delay}s: $url"
+        _hr_sleep "$delay"
+        attempt=$(( attempt + 1 ))
+    done
+}
+
+# sleep wrapper so tests can neutralize delays (0/empty is a no-op).
+_hr_sleep() {
+    local secs="$1"
+    [[ -z "$secs" || "$secs" == "0" ]] && return 0
+    sleep "$secs" 2>/dev/null || true
+}
+
+# Echo an integer Retry-After value (seconds form) from a curl header dump.
+# HTTP-date forms are ignored (only the seconds form is honored).
+_hr_retry_after() {
+    local hdr_file="$1"
+    [[ -f "$hdr_file" ]] || return 0
+    local val
+    val="$(grep -i '^[[:space:]]*retry-after:' "$hdr_file" 2>/dev/null \
+        | tail -n1 | tr -d '\r' | sed 's/^[^:]*:[[:space:]]*//')"
+    [[ "$val" =~ ^[0-9]+$ ]] && printf '%s' "$val"
+    return 0
+}
+
 _log() {
     local level="$1"; shift
     local level_num="${_LOG_LEVELS[$level]:-1}"

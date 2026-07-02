@@ -41,3 +41,9 @@ FOURCHAN_ENABLED=true
 API_TIMEOUT=30
 # Max retry attempts for API calls
 RETRY_MAX_ATTEMPTS=3
+
+# --- HTTP resilience (applies to every API module via http_request) ---
+# Base seconds for exponential retry backoff: delay = base * 2^(attempt-1), capped at 60s.
+RETRY_BACKOFF_BASE=1
+# Small delay after each API call to smooth request bursts (fractional seconds OK).
+HTTP_THROTTLE_SECONDS=0.2
