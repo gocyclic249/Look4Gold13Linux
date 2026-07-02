@@ -8,17 +8,11 @@ _nist_request() {
     local url="$1"
     local use_key="$2"
 
-    local -a auth=()
+    local -a _nist_hdrs=()
     if [[ "$use_key" == "true" && -n "${NIST_API_KEY:-}" ]]; then
-        auth=(-H "apiKey: $NIST_API_KEY")
+        _nist_hdrs=(-H "apiKey: $NIST_API_KEY")
     fi
-
-    curl -s -w "\n%{http_code}" \
-        --proto =https \
-        --max-time 30 --max-redirs 5 \
-        "${auth[@]}" \
-        "$url" \
-        2>/dev/null
+    http_request GET "$url" _nist_hdrs
 }
 
 # Map a CVSS base score to a severity band using jq (no calculator dependency).

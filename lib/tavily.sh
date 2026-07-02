@@ -92,16 +92,12 @@ _tavily_query() {
             include_raw_content: false
         }')
 
+    local -a _tavily_hdrs=(
+        -H "Content-Type: application/json"
+        -H "Authorization: Bearer $TAVILY_API_KEY"
+    )
     local response http_code body
-    response=$(echo "$request_body" | curl -s -w "\n%{http_code}" \
-        -X POST \
-        --proto =https \
-        --max-time 30 --max-redirs 5 \
-        -H "Content-Type: application/json" \
-        -H "Authorization: Bearer $TAVILY_API_KEY" \
-        -d @- \
-        "https://api.tavily.com/search" \
-        2>/dev/null)
+    response=$(http_request POST "https://api.tavily.com/search" _tavily_hdrs "$request_body")
 
     http_code=$(echo "$response" | tail -n1)
     body=$(echo "$response" | sed '$d')
@@ -222,16 +218,12 @@ _tavily_precision_query() {
 
     log_debug "Tavily precision: query='$keyword' (include_domains: ${#_PRECISION_DOMAINS[@]} hosts)"
 
+    local -a _tavily_hdrs=(
+        -H "Content-Type: application/json"
+        -H "Authorization: Bearer $TAVILY_API_KEY"
+    )
     local response http_code body
-    response=$(echo "$request_body" | curl -s -w "\n%{http_code}" \
-        -X POST \
-        --proto =https \
-        --max-time 30 --max-redirs 5 \
-        -H "Content-Type: application/json" \
-        -H "Authorization: Bearer $TAVILY_API_KEY" \
-        -d @- \
-        "https://api.tavily.com/search" \
-        2>/dev/null)
+    response=$(http_request POST "https://api.tavily.com/search" _tavily_hdrs "$request_body")
 
     http_code=$(echo "$response" | tail -n1)
     body=$(echo "$response" | sed '$d')
