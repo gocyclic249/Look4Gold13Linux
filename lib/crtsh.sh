@@ -5,6 +5,7 @@
 
 crtsh_search() {
     local keyword="$1"
+    [[ -n "$keyword" ]] || { log_error "crtsh_search: keyword argument is required"; return 1; }
 
     if [[ "${CRTSH_ENABLED:-true}" != "true" ]]; then
         log_debug "crt.sh disabled (CRTSH_ENABLED != true)"
@@ -37,7 +38,7 @@ crtsh_search() {
         return 1
     fi
 
-    # crt.sh intermittently returns a 502 HTML page under load; guard the parse.
+    # exit-code-only type guard; stdout ("true"/"false") and any parse-error stderr are intentionally discarded
     if ! echo "$body" | jq -e 'type == "array"' &>/dev/null; then
         log_warn "crt.sh: non-array response for '$keyword' (transient); skipping"
         return 1

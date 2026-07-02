@@ -20,6 +20,8 @@ setup() {
     [ "$output" -eq 2 ]
     run jq -rs '[.[] | select(.outcome=="found") | .details.domain] | sort | join(",")' "$AUDIT_OUTPUT_FILE"
     [ "$output" = "a.example.com,example.com" ]
+    run jq -rs '[.[] | select(.outcome=="found") | select(.details.url != ("https://" + .details.domain))] | length' "$AUDIT_OUTPUT_FILE"
+    [ "$output" -eq 0 ]
 }
 
 @test "emits not_found on empty array" {
@@ -31,6 +33,13 @@ setup() {
 
 @test "skips when disabled" {
     export CRTSH_ENABLED=false
+    http_request() { printf '%s\n200' '[{"name_value":"x.example.com"}]'; }
+    crtsh_search "example" || true
+    [ ! -s "$AUDIT_OUTPUT_FILE" ]
+}
+
+@test "skips when DRY_RUN=true" {
+    export DRY_RUN=true
     http_request() { printf '%s\n200' '[{"name_value":"x.example.com"}]'; }
     crtsh_search "example" || true
     [ ! -s "$AUDIT_OUTPUT_FILE" ]
