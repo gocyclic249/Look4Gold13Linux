@@ -94,6 +94,9 @@ source "$SCRIPT_DIR/lib/cse_scrape.sh"
 source "$SCRIPT_DIR/lib/nist.sh"
 source "$SCRIPT_DIR/lib/otx.sh"
 source "$SCRIPT_DIR/lib/fourchan.sh"
+source "$SCRIPT_DIR/lib/crtsh.sh"
+source "$SCRIPT_DIR/lib/github.sh"
+source "$SCRIPT_DIR/lib/urlscan.sh"
 source "$SCRIPT_DIR/lib/xai.sh"
 source "$SCRIPT_DIR/lib/report.sh"
 
@@ -202,6 +205,9 @@ for keyword in "${KEYWORDS[@]}"; do
     nist_search "$keyword" || true
     otx_search "$keyword" || true
     fourchan_search "$keyword" || true
+    crtsh_search "$keyword" || true
+    github_search "$keyword" || true
+    urlscan_search "$keyword" || true
 
     # Deduplicate web search results (Brave + Tavily) and run AI analysis
     if [[ "$NO_AI" == "false" && "$DRY_RUN" == "false" && -f "$AUDIT_OUTPUT_FILE" ]]; then
@@ -212,6 +218,8 @@ for keyword in "${KEYWORDS[@]}"; do
             [.[] | select(.keyword == $kw and .outcome == "found")]
             | group_by(
                 if (.event_type == "SEARCH_WEB" or .event_type == "SEARCH_CHAN") then (.details.url // .description)
+                elif (.event_type == "SEARCH_CODE") then (.details.html_url // .description)
+                elif (.event_type == "SEARCH_CERT") then (.details.domain // .description)
                 else (.event_type + "|" + .source + "|" + .description)
                 end
               )

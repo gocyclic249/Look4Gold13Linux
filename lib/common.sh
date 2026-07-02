@@ -193,14 +193,19 @@ load_config() {
     DORK_MODE="${DORK_MODE:-${BRAVE_DORK_MODE:-security}}"
     export DORK_MODE
 
-    # Validate at least one API key or keyless source is enabled
+    # Validate at least one API key or keyless source is enabled.
     local has_source=false
-    for key_var in BRAVE_API_KEY TAVILY_API_KEY NIST_API_KEY OTX_API_KEY XAI_API_KEY; do
+    for key_var in BRAVE_API_KEY TAVILY_API_KEY NIST_API_KEY OTX_API_KEY XAI_API_KEY \
+                   GITHUB_TOKEN URLSCAN_API_KEY; do
         if [[ -n "${!key_var:-}" ]]; then
             has_source=true
             break
         fi
     done
+    # crt.sh is keyless — when enabled (default), it is always an available source.
+    if [[ "${CRTSH_ENABLED:-true}" == "true" ]]; then
+        has_source=true
+    fi
     # 4chan archives now use web search dorks — require Brave or Tavily API key
     if [[ "$FOURCHAN_ENABLED" == "true" ]] && [[ -n "${BRAVE_API_KEY:-}" || -n "${TAVILY_API_KEY:-}" ]]; then
         has_source=true
