@@ -4,7 +4,7 @@ A bash-based NIST SP 800-53 AU-13 monitoring tool that searches web and threat i
 
 > **CLASSIFICATION NOTICE**
 >
-> **DO NOT** enter Controlled Unclassified Information (CUI), classified, or otherwise sensitive keywords into this tool. Keywords are sent to **third-party commercial APIs** (Brave Search, Tavily Search, NIST NVD, AlienVault OTX, xAI) over the public internet. Use only **unclassified, publicly releasable** search terms such as organization names, brand names, product names, and domain names.
+> **DO NOT** enter Controlled Unclassified Information (CUI), classified, or otherwise sensitive keywords into this tool. Keywords are sent to **third-party commercial APIs** (Brave Search, Tavily Search, NIST NVD, AlienVault OTX, GitHub, crt.sh, URLScan.io, xAI) over the public internet. Use only **unclassified, publicly releasable** search terms such as organization names, brand names, product names, and domain names.
 >
 > Before running a scan, verify that:
 > - All keywords in `keywords.conf` are **unclassified and approved for public disclosure**
@@ -12,6 +12,8 @@ A bash-based NIST SP 800-53 AU-13 monitoring tool that searches web and threat i
 > - Output files (JSONL, CSV, HTML) are handled according to your organization's data handling policies
 >
 > **You are responsible** for ensuring compliance with your organization's information security policies, marking requirements, and any applicable regulations (e.g., NIST SP 800-171, CMMC, ITAR, EAR).
+>
+> **OPSEC note:** `GITHUB_ORGS` (optional, used to scope GitHub code search to your organization) identifies your organization. It is stored only in the local, gitignored `.config/apis.conf` and is never committed. Leave it blank to run broad keyword-only code searches.
 
 ## What It Does
 
@@ -24,6 +26,9 @@ For each keyword you configure, Look4Gold13 queries multiple intelligence source
 | **NIST NVD** | CVE vulnerability records matching keywords | [NVD API](https://nvd.nist.gov/developers) |
 | **AlienVault OTX** | Threat intelligence pulses and indicators | [OTX API](https://otx.alienvault.com/api) |
 | **4chan Archives** | Indexed archive pages from 4plebs, desuarchive, archived.moe — known venues for data leaks, credential dumps, and organizational exposure | Via Brave/Tavily web search dorks (requires Brave or Tavily API key) |
+| **GitHub Code Search** | Public repository file contents matching keywords (leaked secrets/config), with optional org scoping | [GitHub code search](https://docs.github.com/en/rest/search) |
+| **crt.sh** | Certificate Transparency logs — surfaces lookalike/phishing domains and shadow-IT certs | [crt.sh](https://crt.sh/) |
+| **URLScan.io** | Submitted-and-screenshotted URLs matching a brand/domain — phishing and brand-abuse pages | [URLScan.io](https://urlscan.io/) |
 | **xAI (Grok)** | AI-powered deep analysis of all findings with live web research | [xAI API](https://console.x.ai/) |
 
 Brave and Tavily can be used independently or together. When both are enabled, results are **deduplicated by URL** before being sent to AI analysis — the first occurrence is kept (Brave results take priority), so duplicate URLs from Tavily are removed automatically. 4chan archive results use a separate event type (`SEARCH_CHAN`) and are also deduplicated by URL, preventing duplicates if the same archive page appears in both chan dork and web dork results.
@@ -81,6 +86,9 @@ All API keys are free tier or have free options:
 | NIST NVD | 50 requests/30 seconds | https://nvd.nist.gov/developers/request-an-api-key |
 | AlienVault OTX | Unlimited (community) | https://otx.alienvault.com/api |
 | xAI (Grok) | Usage-based credits | https://console.x.ai/ |
+| GitHub | 5,000 req/hr (code search ~10/min) | https://github.com/settings/tokens |
+| URLScan.io | Free tier | https://urlscan.io/user/signup |
+| crt.sh | No key required | https://crt.sh/ |
 | Google Programmable Search (scraped) | No key required, `cx` ID only | https://programmablesearchengine.google.com/ |
 
 Run `bash setup.sh` to configure keys interactively, or copy `.config/apis.conf.template` to `.config/apis.conf` and fill in manually.
@@ -233,6 +241,8 @@ cp .config/prompts-disclosure.template .config/prompts.conf
 | `XAI_WEB_SEARCH` | `true` | Enable Grok web search |
 | `RETRY_MAX_ATTEMPTS` | `3` | API retry attempts |
 | `API_TIMEOUT` | `30` | General API timeout |
+| `RETRY_BACKOFF_BASE` | `1` | Exponential backoff multiplier for retries |
+| `HTTP_THROTTLE_SECONDS` | `0.2` | Delay between API calls to respect rate limits |
 | `SCAN_FREQUENCY` | `on_demand` | Audit metadata label |
 | `FOURCHAN_ENABLED` | `true` | Enable 4chan archive search |
 
