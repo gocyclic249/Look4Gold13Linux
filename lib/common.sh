@@ -494,6 +494,56 @@ check_api_quotas() {
         _api_status[xAI]="no key configured"
     fi
 
+    # --- GitHub code search ---
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+        total=$((total + 1))
+        local gh_code
+        # suppress curl transport-noise on stderr; non-200/failure is captured via the || gh_code="000" fallback and classified below
+        gh_code=$(curl -s -o /dev/null -w "%{http_code}" \
+            --proto =https --max-time 15 --max-redirs 5 \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://api.github.com/rate_limit" 2>/dev/null) || gh_code="000"
+        if [[ "$gh_code" == "200" ]]; then
+            _api_status[GitHub]="ready"; ready=$((ready + 1))
+        elif [[ "$gh_code" == "401" || "$gh_code" == "403" ]]; then
+            _api_status[GitHub]="invalid token (HTTP $gh_code)"
+            log_error "GitHub code search: invalid token (HTTP $gh_code)"
+        elif [[ "$gh_code" == "000" ]]; then
+            _api_status[GitHub]="connection failed"
+            log_error "GitHub code search: connection failed"
+        else
+            _api_status[GitHub]="unexpected HTTP $gh_code"
+            log_warn "GitHub code search: unexpected HTTP $gh_code"
+        fi
+    else
+        _api_status[GitHub]="no token configured"
+    fi
+
+    # --- URLScan.io ---
+    if [[ -n "${URLSCAN_API_KEY:-}" ]]; then
+        total=$((total + 1))
+        local us_code
+        # suppress curl transport-noise on stderr; non-200/failure is captured via the || us_code="000" fallback and classified below
+        us_code=$(curl -s -o /dev/null -w "%{http_code}" \
+            --proto =https --max-time 15 --max-redirs 5 \
+            -H "API-Key: $URLSCAN_API_KEY" \
+            "https://urlscan.io/api/v1/search/?q=test&size=1" 2>/dev/null) || us_code="000"
+        if [[ "$us_code" == "200" ]]; then
+            _api_status[URLScan]="ready"; ready=$((ready + 1))
+        elif [[ "$us_code" == "401" || "$us_code" == "403" ]]; then
+            _api_status[URLScan]="invalid key (HTTP $us_code)"
+            log_error "URLScan.io: invalid key (HTTP $us_code)"
+        elif [[ "$us_code" == "000" ]]; then
+            _api_status[URLScan]="connection failed"
+            log_error "URLScan.io: connection failed"
+        else
+            _api_status[URLScan]="unexpected HTTP $us_code"
+            log_warn "URLScan.io: unexpected HTTP $us_code"
+        fi
+    else
+        _api_status[URLScan]="no key configured"
+    fi
+
     # --- 4chan Archives (via web search dorks) ---
     if [[ "$FOURCHAN_ENABLED" == "true" ]]; then
         if [[ -n "${TAVILY_API_KEY:-}" || -n "${BRAVE_API_KEY:-}" ]]; then
@@ -508,7 +558,7 @@ check_api_quotas() {
 
     # Print per-API status summary
     log_info "API status: ${ready}/${total} APIs ready"
-    for api_name in Brave Tavily NIST OTX xAI 4chan; do
+    for api_name in Brave Tavily NIST OTX xAI GitHub URLScan 4chan; do
         log_debug "  ${api_name}: ${_api_status[$api_name]:-unknown}"
     done
 

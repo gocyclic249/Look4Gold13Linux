@@ -69,6 +69,10 @@ OTX_API_KEY=""
 XAI_API_KEY=""
 CSE_ID=""
 ENABLE_CSE_SCRAPE="false"
+GITHUB_TOKEN=""
+GITHUB_ORGS=""
+URLSCAN_API_KEY=""
+CRTSH_ENABLED="true"
 if [[ -f "$apis_file" ]]; then
     # shellcheck source=/dev/null
     source "$apis_file"
@@ -114,6 +118,21 @@ echo
 echo "  xAI (Grok) API — https://console.x.ai/"
 XAI_API_KEY=$(prompt_key "XAI_API_KEY" "$XAI_API_KEY" "xAI Grok")
 echo
+echo "  GitHub code search — https://github.com/settings/tokens (no scopes needed for public code)"
+GITHUB_TOKEN=$(prompt_key "GITHUB_TOKEN" "$GITHUB_TOKEN" "GitHub")
+echo
+echo "  URLScan.io — https://urlscan.io/user/signup"
+URLSCAN_API_KEY=$(prompt_key "URLSCAN_API_KEY" "$URLSCAN_API_KEY" "URLScan.io")
+echo
+# GITHUB_ORGS is OPSEC-sensitive but not a secret — plain read, stored locally only.
+echo "  GitHub orgs to scope code search (optional; OPSEC-sensitive — stored locally, never committed)"
+if [[ -n "$GITHUB_ORGS" ]]; then
+    read -rp "  GITHUB_ORGS [$GITHUB_ORGS] (space/comma separated, Enter to keep): " _orgs_input
+    GITHUB_ORGS="${_orgs_input:-$GITHUB_ORGS}"
+else
+    read -rp "  GITHUB_ORGS (space/comma separated, Enter to skip): " GITHUB_ORGS
+fi
+echo
 
 # --- Google Programmable Search Engine (CSE) scraper ---
 echo "Google Programmable Search Engine scraper (optional)"
@@ -156,6 +175,10 @@ TAVILY_API_KEY="$TAVILY_API_KEY"
 NIST_API_KEY="$NIST_API_KEY"
 OTX_API_KEY="$OTX_API_KEY"
 XAI_API_KEY="$XAI_API_KEY"
+GITHUB_TOKEN="$GITHUB_TOKEN"
+GITHUB_ORGS="$GITHUB_ORGS"
+URLSCAN_API_KEY="$URLSCAN_API_KEY"
+CRTSH_ENABLED="$CRTSH_ENABLED"
 
 # Google Programmable Search Engine scraper (see docs above)
 ENABLE_CSE_SCRAPE="$ENABLE_CSE_SCRAPE"
@@ -240,6 +263,26 @@ elif curl -sf --max-time 15 --max-redirs 3 --proto =https \
     echo "  [OK]   xAI (Grok)"
 else
     echo "  [FAIL] xAI (Grok) — key may be invalid (check manually)"
+fi
+
+if [[ -z "$GITHUB_TOKEN" ]]; then
+    echo "  [SKIP] GitHub code search — no token provided"
+elif curl -sf --max-time 15 --max-redirs 3 --proto =https \
+    -H "Authorization: Bearer $GITHUB_TOKEN" \
+    "https://api.github.com/rate_limit" &>/dev/null; then
+    echo "  [OK]   GitHub code search"
+else
+    echo "  [FAIL] GitHub code search — token may be invalid (check manually)"
+fi
+
+if [[ -z "$URLSCAN_API_KEY" ]]; then
+    echo "  [SKIP] URLScan.io — no key provided"
+elif curl -sf --max-time 15 --max-redirs 3 --proto =https \
+    -H "API-Key: $URLSCAN_API_KEY" \
+    "https://urlscan.io/api/v1/search/?q=test&size=1" &>/dev/null; then
+    echo "  [OK]   URLScan.io"
+else
+    echo "  [FAIL] URLScan.io — key may be invalid (check manually)"
 fi
 
 echo
