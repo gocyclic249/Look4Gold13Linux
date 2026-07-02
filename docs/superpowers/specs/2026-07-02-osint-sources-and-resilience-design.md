@@ -2,22 +2,22 @@
 
 **Date:** 2026-07-02
 **Status:** Approved (design), pending implementation plan
-**Scope:** Add four new OSINT sources (crt.sh, GitHub code search, URLScan.io, Intelligence X), introduce a shared HTTP helper with retry/backoff/throttle, and fix the `bc` severity bug in `lib/nist.sh`.
+**Scope:** Add three new OSINT sources (crt.sh, GitHub code search, URLScan.io), introduce a shared HTTP helper with retry/backoff/throttle, and fix the `bc` severity bug in `lib/nist.sh`.
 
 ## Background
 
 Look4Gold13 is a pure-Bash NIST SP 800-53 AU-13 information-disclosure monitor. It queries web/threat-intel APIs per keyword, emits AU-3 JSONL audit records, and renders CSV/HTML reports with optional xAI (Grok) analysis. Current sources: Brave, Tavily (+ precision pass), NIST NVD, AlienVault OTX, 4chan archives (via web dorks), optional Google CSE scrape.
 
-This work expands coverage for the disclosure/breach use case and hardens the HTTP layer. It was scoped from a project assessment that identified: (a) high value in adding GitHub code search + certificate-transparency + brand/phishing + leak-index sources; (b) a dead retry/throttle config (`RETRY_MAX_ATTEMPTS`, `API_TIMEOUT` are defined in `settings.conf` but never read); and (c) a latent `bc` bug in NIST severity mapping.
+This work expands coverage for the disclosure/breach use case and hardens the HTTP layer. It was scoped from a project assessment that identified: (a) high value in adding GitHub code search + certificate-transparency + brand/phishing sources; (b) a dead retry/throttle config (`RETRY_MAX_ATTEMPTS`, `API_TIMEOUT` are defined in `settings.conf` but never read); and (c) a latent `bc` bug in NIST severity mapping. (Intelligence X was considered and dropped from scope: complex two-phase async API and stingy free-tier credits made it the weakest yield-for-effort; it can be revisited later.)
 
 Non-goals for this spec: SearXNG self-hosting (deferred), changes to xAI or dork logic beyond a dedup-key extension, any unrelated refactoring.
 
 ## Constraints & Decisions
 
-- **Retry/throttle (COA A):** A single shared `http_request()` helper owns timeout, retry, backoff, and throttle. All curl-based modules (existing Brave/Tavily/NIST/OTX and the four new ones) are retrofitted to call it. Rationale: consistency, DRY, and it satisfies the request to make resilience apply across *all* sources. Accepted cost: careful refactor of four working modules, mitigated by tests.
+- **Retry/throttle (COA A):** A single shared `http_request()` helper owns timeout, retry, backoff, and throttle. All curl-based modules (existing Brave/Tavily/NIST/OTX and the three new ones) are retrofitted to call it. Rationale: consistency, DRY, and it satisfies the request to make resilience apply across *all* sources. Accepted cost: careful refactor of four working modules, mitigated by tests.
 - **GitHub scope:** Run **both** a broad `keyword` pass and org-scoped `keyword org:<org>` passes. Org names are OPSEC-sensitive (spillage risk), so they live in the gitignored `apis.conf` (`chmod 600`, matched by the `*.conf` gitignore rule), never in a committed template value.
-- **Pipeline fit (match source semantics):** crt.sh and GitHub are disclosure-type and feed URL/domain dedup + xAI analysis like web results. URLScan and IntelX get their own event types and flow to reports like NIST/OTX. (Note: the existing scan loop already sends *all* `outcome=="found"` records for a keyword to xAI; "match semantics" governs the dedup key and report rendering, not whether AI sees them.)
-- **No new hard dependencies:** all four modules use only `curl` + `jq`, already required.
+- **Pipeline fit (match source semantics):** crt.sh and GitHub are disclosure-type and feed URL/domain dedup + xAI analysis like web results. URLScan gets its own event type and flows to reports like NIST/OTX. (Note: the existing scan loop already sends *all* `outcome=="found"` records for a keyword to xAI; "match semantics" governs the dedup key and report rendering, not whether AI sees them.)
+- **No new hard dependencies:** all three modules use only `curl` + `jq`, already required.
 - **Backward compatibility:** `http_request()` preserves the existing `body\n<http_code>` return convention so current response-parsing (`tail -n1` / `sed '$d'`) is unchanged.
 
 ## Architecture
@@ -30,7 +30,7 @@ Non-goals for this spec: SearXNG self-hosting (deferred), changes to xAI or dork
   - `method`: `GET` or `POST`.
   - `url`: full URL (caller URL-encodes query params as today).
   - `curl_args_array_name`: name of a bash array holding per-call curl args (auth headers, `Accept`, `--compressed`, etc.), passed by nameref so each module keeps its own header shape.
-  - Optional request body on stdin (used by Tavily/IntelX POSTs).
+  - Optional request body on stdin (used by Tavily POSTs).
   - **Output:** response body followed by a final line containing the HTTP status code (unchanged convention). On total failure after retries, emits `000` as the code so callers' existing `!= 200` branches fire.
 - **Behavior:**
   - Uses `--proto =https`, `--max-time "${API_TIMEOUT}"`, `--max-redirs 5`.
@@ -72,25 +72,18 @@ Each module follows existing conventions: single public `<name>_search()` functi
 - Per result emit `event_type=CHECK_PHISH`, `source=urlscan`, `severity=low` (raise to `medium` when `verdicts.overall.malicious == true`). `details`: `{ page_url, page_domain, scan_time, verdict, result_uuid }`.
 - Dedup key: `page_url`. Standalone-semantics (rendered like OTX/NIST in reports).
 
-**`lib/intelx.sh` — Intelligence X (`INTELX_API_KEY`, free tier)**
-- Base URL `https://free.intelx.io`; header `x-key: $INTELX_API_KEY`.
-- Two-phase async: `POST /intelligent/search` (body: `{ term, maxresults, media:0, sort:2 }`) → receive search `id`; then poll `GET /intelligent/search/result?id=<id>&limit=<count>` in a **bounded** loop (safety counter + `HTTP_THROTTLE_SECONDS` between polls) until `status` indicates complete or the cap is hit.
-- Per record emit `event_type=SEARCH_LEAK`, `source=intelx`, `severity=low`. `details`: `{ systemid, name, bucket, media_type, date }`.
-- Dedup key: `systemid`. Standalone-semantics.
-- Flagged risk: most complex integration; free-tier credits are limited (`402`/`429` handled gracefully as non-fatal skips). Expect the lowest yield-per-effort of the four; acceptable per user direction.
-
 ### Component 4 — Orchestration & config
 
-- **`look4gold.sh`:** source the four new modules after `common.sh`; add `crtsh_search`, `github_search`, `urlscan_search`, `intelx_search` calls (each `|| true`) into the per-keyword loop after the existing sources. Extend the AI-dedup `jq` (currently keys `SEARCH_WEB`/`SEARCH_CHAN` by `details.url`) to also key `SEARCH_CODE` by `details.html_url` and `SEARCH_CERT` by `details.domain`.
-- **`apis.conf.template`:** add `GITHUB_TOKEN`, `GITHUB_ORGS` (with an explicit OPSEC comment: stored locally only, never commit, org identity is sensitive), `URLSCAN_API_KEY`, `INTELX_API_KEY`, `CRTSH_ENABLED="true"`.
-- **`setup.sh`:** prompt for the three new keys via `read -rs`; prompt for `GITHUB_ORGS` via plain `read` with a "stored locally, never committed" note; write them into `apis.conf`.
-- **`common.sh` `check_api_quotas`:** add lightweight health probes for the three keyed sources (GitHub `/rate_limit`, URLScan a minimal search, IntelX a minimal search or auth check), mirroring the existing per-API status summary. crt.sh needs none.
+- **`look4gold.sh`:** source the three new modules after `common.sh`; add `crtsh_search`, `github_search`, `urlscan_search` calls (each `|| true`) into the per-keyword loop after the existing sources. Extend the AI-dedup `jq` (currently keys `SEARCH_WEB`/`SEARCH_CHAN` by `details.url`) to also key `SEARCH_CODE` by `details.html_url` and `SEARCH_CERT` by `details.domain`.
+- **`apis.conf.template`:** add `GITHUB_TOKEN`, `GITHUB_ORGS` (with an explicit OPSEC comment: stored locally only, never commit, org identity is sensitive), `URLSCAN_API_KEY`, `CRTSH_ENABLED="true"`.
+- **`setup.sh`:** prompt for the two new keys (`GITHUB_TOKEN`, `URLSCAN_API_KEY`) via `read -rs`; prompt for `GITHUB_ORGS` via plain `read` with a "stored locally, never committed" note; write them into `apis.conf`.
+- **`common.sh` `check_api_quotas`:** add lightweight health probes for the two keyed sources (GitHub `/rate_limit`, URLScan a minimal search), mirroring the existing per-API status summary. crt.sh needs none.
 - **`check_deps`:** unchanged (no new hard deps); confirm `bc` is not referenced anywhere after the fix.
 
 ### Component 5 — Reports (`lib/report.sh`)
 
 - **CSV:** no change — the generator dumps all event types except `SCAN_START`/`SCAN_END` generically.
-- **HTML:** extend the per-keyword "Source Findings" renderer (around `report.sh:824`, which currently selects only `SEARCH_WEB`/`SEARCH_CHAN`) to also render `SEARCH_CODE`, `SEARCH_CERT`, `CHECK_PHISH`, `SEARCH_LEAK`, with source labels/icons and correct URL/domain fields. Continue using `_html_escape()` and `_sanitize_url()` for all new fields.
+- **HTML:** extend the per-keyword "Source Findings" renderer (around `report.sh:824`, which currently selects only `SEARCH_WEB`/`SEARCH_CHAN`) to also render `SEARCH_CODE`, `SEARCH_CERT`, `CHECK_PHISH`, with source labels/icons and correct URL/domain fields. Continue using `_html_escape()` and `_sanitize_url()` for all new fields.
 
 ### Component 6 — Tests (`test/bats/`)
 
@@ -101,17 +94,17 @@ TDD; existing suite must stay green through the refactor.
 
 ## Data Flow (per keyword, additions in **bold**)
 
-1. brave → tavily → tavily_precision → cse → nist → otx → fourchan → **crtsh → github → urlscan → intelx**
+1. brave → tavily → tavily_precision → cse → nist → otx → fourchan → **crtsh → github → urlscan**
 2. Each `emit_audit_record` appends AU-3 JSONL to `$AUDIT_OUTPUT_FILE`.
 3. Dedup `outcome=="found"` records: web/chan/**code**/**cert** by URL/domain; others by `event_type|source|description`.
 4. Deduped set → `xai_analyze` (unless `--no-ai`).
-5. CSV + HTML generated; HTML now renders the four new source types.
+5. CSV + HTML generated; HTML now renders the three new source types.
 
 ## Error Handling
 
 - Every new module is non-fatal (`|| true` at the call site); API/parse errors emit an `error` audit record and `return 1`.
 - `http_request` classifies retryable vs terminal statuses explicitly; no blanket `2>/dev/null` suppression of unclassified errors (rule #7). Exhausted retries surface as `000`/non-200 to the caller, which logs and emits an `error` record.
-- Bounded loops everywhere (retry loop, IntelX poll loop) carry explicit safety counters (rule #2).
+- Bounded loops everywhere (the retry loop) carry explicit safety counters (rule #2).
 
 ## Rollout / Verification
 
