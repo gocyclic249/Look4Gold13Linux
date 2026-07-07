@@ -58,15 +58,14 @@ _brave_query() {
     from_date="$(date -u -d "${days_back} days ago" '+%Y-%m-%d')"
     freshness_param="${from_date}to${to_date}"
 
+    local -a _brave_hdrs=(
+        -H "Accept: application/json"
+        -H "Accept-Encoding: gzip"
+        -H "X-Subscription-Token: $BRAVE_API_KEY"
+        --compressed
+    )
     local response http_code body
-    response=$(curl -s -w "\n%{http_code}" \
-        --proto =https \
-        --max-time 30 --max-redirs 5 \
-        -H "Accept: application/json" \
-        -H "Accept-Encoding: gzip" \
-        -H "X-Subscription-Token: $BRAVE_API_KEY" \
-        "https://api.search.brave.com/res/v1/web/search?q=${encoded_query}&count=${count}&freshness=${freshness_param}" \
-        --compressed 2>/dev/null)
+    response=$(http_request GET "https://api.search.brave.com/res/v1/web/search?q=${encoded_query}&count=${count}&freshness=${freshness_param}" _brave_hdrs)
 
     http_code=$(echo "$response" | tail -n1)
     body=$(echo "$response" | sed '$d')

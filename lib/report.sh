@@ -305,6 +305,9 @@ HTMLHDR
         # Source: 4chan Archives (via web search dorks)
         _html_source_section "$jsonl_file" "$html_file" "$kw" "fourchan_dork" "4chan Archives"
 
+        # Source Findings — deduplicated URLs across all search event types
+        _html_source_findings "$jsonl_file" "$html_file" "$kw"
+
         echo "</div>" >> "$html_file"
     done <<< "$keyword_list"
 
@@ -821,35 +824,46 @@ HTMLFINDING
         } >> "$html_file"
     fi
 
-    # Source Findings — unique URLs from SEARCH_WEB/SEARCH_CHAN JSONL records for this keyword
+    echo '  </div>' >> "$html_file"
+}
+
+# Internal helper: write Source Findings subsection for a keyword.
+# Independent of AI analysis — runs for every keyword with matching records.
+_html_source_findings() {
+    local jsonl_file="$1" html_file="$2" keyword="$3"
+    [[ -f "$jsonl_file" ]] || return 0
+
     local source_urls
     source_urls=$(jq -r --arg kw "$keyword" '
-        select(.keyword == $kw and (.event_type == "SEARCH_WEB" or .event_type == "SEARCH_CHAN") and .outcome == "found")
-        | .details.url // empty
+        select(.keyword == $kw
+               and (.event_type == "SEARCH_WEB" or .event_type == "SEARCH_CHAN"
+                    or .event_type == "SEARCH_CODE" or .event_type == "SEARCH_CERT"
+                    or .event_type == "CHECK_PHISH")
+               and .outcome == "found")
+        | (.details.url // .details.html_url
+           // (if (.details.domain // "") != "" then ("https://" + .details.domain) else empty end))
     ' "$jsonl_file" 2>/dev/null | sort -u)
 
-    if [[ -n "$source_urls" ]]; then
-        local sf_count
-        sf_count=$(echo "$source_urls" | grep -c . || echo "0")
-        {
-        echo '    <div class="ai-source-findings">'
-        echo "      <details class=\"ai-finding-sources\">"
-        echo "        <summary>Source Findings <span class=\"count\">(${sf_count})</span></summary>"
-        echo '        <ul>'
-        while IFS= read -r surl; do
-            [[ -z "$surl" ]] && continue
-            local safe_surl safe_shref
-            safe_surl=$(_html_escape "$surl")
-            safe_shref=$(_sanitize_url "$surl")
-            if [[ -n "$safe_shref" ]]; then
-                echo "          <li><a href=\"${safe_shref}\" target=\"_blank\" rel=\"noopener\">${safe_surl}</a></li>"
-            fi
-        done <<< "$source_urls"
-        echo '        </ul>'
-        echo '      </details>'
-        echo '    </div>'
-        } >> "$html_file"
-    fi
+    [[ -n "$source_urls" ]] || return 0
 
-    echo '  </div>' >> "$html_file"
+    local sf_count
+    sf_count=$(echo "$source_urls" | grep -c . || echo "0")
+    {
+    echo '    <div class="ai-source-findings">'
+    echo "      <details class=\"ai-finding-sources\">"
+    echo "        <summary>Source Findings <span class=\"count\">(${sf_count})</span></summary>"
+    echo '        <ul>'
+    while IFS= read -r surl; do
+        [[ -z "$surl" ]] && continue
+        local safe_surl safe_shref
+        safe_surl=$(_html_escape "$surl")
+        safe_shref=$(_sanitize_url "$surl")
+        if [[ -n "$safe_shref" ]]; then
+            echo "          <li><a href=\"${safe_shref}\" target=\"_blank\" rel=\"noopener\">${safe_surl}</a></li>"
+        fi
+    done <<< "$source_urls"
+    echo '        </ul>'
+    echo '      </details>'
+    echo '    </div>'
+    } >> "$html_file"
 }

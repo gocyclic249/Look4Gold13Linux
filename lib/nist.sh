@@ -8,17 +8,26 @@ _nist_request() {
     local url="$1"
     local use_key="$2"
 
-    local -a auth=()
+    local -a _nist_hdrs=()
     if [[ "$use_key" == "true" && -n "${NIST_API_KEY:-}" ]]; then
-        auth=(-H "apiKey: $NIST_API_KEY")
+        _nist_hdrs=(-H "apiKey: $NIST_API_KEY")
     fi
+    http_request GET "$url" _nist_hdrs
+}
 
-    curl -s -w "\n%{http_code}" \
-        --proto =https \
-        --max-time 30 --max-redirs 5 \
-        "${auth[@]}" \
-        "$url" \
-        2>/dev/null
+# Map a CVSS base score to a severity band using jq (no calculator dependency).
+_nist_severity() {
+    local score="$1"
+    local s="${score:-0}"
+    if [[ "$(jq -n --argjson s "$s" '$s >= 9.0')" == "true" ]]; then
+        printf 'critical'
+    elif [[ "$(jq -n --argjson s "$s" '$s >= 7.0')" == "true" ]]; then
+        printf 'high'
+    elif [[ "$(jq -n --argjson s "$s" '$s >= 4.0')" == "true" ]]; then
+        printf 'medium'
+    else
+        printf 'low'
+    fi
 }
 
 nist_search() {
@@ -98,16 +107,8 @@ nist_search() {
             .vulnerabilities[$i].cve.metrics.cvssMetricV2[0].cvssData.baseScore //
             0" 2>/dev/null)
 
-        # Map CVSS score to severity
-        if (( $(echo "$base_score >= 9.0" | bc -l 2>/dev/null || echo 0) )); then
-            severity="critical"
-        elif (( $(echo "$base_score >= 7.0" | bc -l 2>/dev/null || echo 0) )); then
-            severity="high"
-        elif (( $(echo "$base_score >= 4.0" | bc -l 2>/dev/null || echo 0) )); then
-            severity="medium"
-        else
-            severity="low"
-        fi
+        # Map CVSS score to severity using jq
+        severity="$(_nist_severity "$base_score")"
 
         local details
         details=$(jq -nc \

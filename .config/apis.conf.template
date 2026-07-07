@@ -32,3 +32,21 @@ XAI_API_KEY=""
 # and pup (https://github.com/ericchiang/pup). Setup.sh will check for both.
 ENABLE_CSE_SCRAPE="false"
 CSE_ID=""
+
+# --- GitHub code search ---
+# Personal access token (classic or fine-grained); no scopes are needed to
+# search PUBLIC code. Create one at https://github.com/settings/tokens
+GITHUB_TOKEN=""
+# OPSEC: optional space/comma-separated GitHub orgs to scope searches to.
+# This value identifies your organization — it is written ONLY to this local,
+# gitignored, chmod-600 apis.conf and is NEVER committed. Leave blank to run
+# broad keyword-only code searches.
+GITHUB_ORGS=""
+
+# --- URLScan.io (brand / phishing page monitoring) ---
+# Free API key: https://urlscan.io/user/signup
+URLSCAN_API_KEY=""
+
+# --- crt.sh Certificate Transparency (no key required) ---
+# Surfaces lookalike/phishing domains and shadow-IT certs. Set "false" to disable.
+CRTSH_ENABLED="true"

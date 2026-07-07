@@ -29,6 +29,89 @@ _mktemp() {
     mktemp "$_SECURE_TMPDIR/tmp.XXXXXX"
 }
 
+# --- HTTP request helper: bounded retry, backoff, throttle -----------------
+# Usage: http_request METHOD URL CURL_ARGS_ARRAY_NAME [BODY]
+#   CURL_ARGS_ARRAY_NAME is the *name* of a bash array of per-call curl args
+#   (auth headers, Accept, --compressed, ...). BODY, if given, is sent via -d.
+# Echoes: response body, then a final line with the HTTP status code (same
+# convention as the old inline curl blocks). "000" on network failure or
+# exhausted retries. Retries 429/5xx/000 (and 403 with Retry-After) up to
+# RETRY_MAX_ATTEMPTS with exponential backoff (RETRY_BACKOFF_BASE * 2^(n-1),
+# capped 60s); an integer Retry-After header overrides the computed backoff.
+http_request() {
+    local method="$1"
+    local url="$2"
+    local -n _hr_args="$3"
+    local body="${4:-}"
+
+    local max_attempts="${RETRY_MAX_ATTEMPTS:-3}"
+    local timeout="${API_TIMEOUT:-30}"
+    local backoff_base="${RETRY_BACKOFF_BASE:-1}"
+    local throttle="${HTTP_THROTTLE_SECONDS:-0.2}"
+
+    # Guard against a misconfigured attempt count (rule #2: bounded loop).
+    local ceiling=20
+    (( max_attempts > ceiling )) && max_attempts=$ceiling
+    (( max_attempts < 1 )) && max_attempts=1
+
+    local attempt=1 response http_code hdr_file retry_after delay retryable
+    while (( attempt <= max_attempts )); do
+        hdr_file="$(_mktemp)"
+        local -a cmd=(curl -s -w $'\n%{http_code}'
+            --proto "=https" --max-time "$timeout" --max-redirs 5
+            -X "$method" -D "$hdr_file" "${_hr_args[@]}")
+        [[ -n "$body" ]] && cmd+=(-d "$body")
+        cmd+=("$url")
+
+        response="$("${cmd[@]}" 2>/dev/null)" || response=$'\n000'
+        http_code="$(printf '%s' "$response" | tail -n1)"
+        retry_after="$(_hr_retry_after "$hdr_file")"
+        rm -f "$hdr_file"
+
+        retryable=false
+        case "$http_code" in
+            000|429)      retryable=true ;;
+            5[0-9][0-9])  retryable=true ;;
+            403)          [[ -n "$retry_after" ]] && retryable=true ;;
+        esac
+
+        if [[ "$retryable" == "false" ]] || (( attempt >= max_attempts )); then
+            _hr_sleep "$throttle"
+            printf '%s' "$response"
+            return 0
+        fi
+
+        if [[ -n "$retry_after" ]]; then
+            delay="$retry_after"
+        else
+            delay=$(( backoff_base * (2 ** (attempt - 1)) ))
+        fi
+        (( delay > 60 )) && delay=60
+        log_debug "http_request: HTTP $http_code (attempt $attempt/$max_attempts) — retry in ${delay}s: $url"
+        _hr_sleep "$delay"
+        attempt=$(( attempt + 1 ))
+    done
+}
+
+# sleep wrapper so tests can neutralize delays (0/empty is a no-op).
+_hr_sleep() {
+    local secs="$1"
+    [[ -z "$secs" || "$secs" == "0" ]] && return 0
+    sleep "$secs" 2>/dev/null || true
+}
+
+# Echo an integer Retry-After value (seconds form) from a curl header dump.
+# HTTP-date forms are ignored (only the seconds form is honored).
+_hr_retry_after() {
+    local hdr_file="$1"
+    [[ -f "$hdr_file" ]] || return 0
+    local val
+    val="$(grep -i '^[[:space:]]*retry-after:' "$hdr_file" 2>/dev/null \
+        | tail -n1 | tr -d '\r' | sed 's/^[^:]*:[[:space:]]*//')"
+    [[ "$val" =~ ^[0-9]+$ ]] && printf '%s' "$val"
+    return 0
+}
+
 _log() {
     local level="$1"; shift
     local level_num="${_LOG_LEVELS[$level]:-1}"
@@ -110,14 +193,19 @@ load_config() {
     DORK_MODE="${DORK_MODE:-${BRAVE_DORK_MODE:-security}}"
     export DORK_MODE
 
-    # Validate at least one API key or keyless source is enabled
+    # Validate at least one API key or keyless source is enabled.
     local has_source=false
-    for key_var in BRAVE_API_KEY TAVILY_API_KEY NIST_API_KEY OTX_API_KEY XAI_API_KEY; do
+    for key_var in BRAVE_API_KEY TAVILY_API_KEY NIST_API_KEY OTX_API_KEY XAI_API_KEY \
+                   GITHUB_TOKEN URLSCAN_API_KEY; do
         if [[ -n "${!key_var:-}" ]]; then
             has_source=true
             break
         fi
     done
+    # crt.sh is keyless — when enabled (default), it is always an available source.
+    if [[ "${CRTSH_ENABLED:-true}" == "true" ]]; then
+        has_source=true
+    fi
     # 4chan archives now use web search dorks — require Brave or Tavily API key
     if [[ "$FOURCHAN_ENABLED" == "true" ]] && [[ -n "${BRAVE_API_KEY:-}" || -n "${TAVILY_API_KEY:-}" ]]; then
         has_source=true
@@ -406,6 +494,56 @@ check_api_quotas() {
         _api_status[xAI]="no key configured"
     fi
 
+    # --- GitHub code search ---
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+        total=$((total + 1))
+        local gh_code
+        # suppress curl transport-noise on stderr; non-200/failure is captured via the || gh_code="000" fallback and classified below
+        gh_code=$(curl -s -o /dev/null -w "%{http_code}" \
+            --proto =https --max-time 15 --max-redirs 5 \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://api.github.com/rate_limit" 2>/dev/null) || gh_code="000"
+        if [[ "$gh_code" == "200" ]]; then
+            _api_status[GitHub]="ready"; ready=$((ready + 1))
+        elif [[ "$gh_code" == "401" || "$gh_code" == "403" ]]; then
+            _api_status[GitHub]="invalid token (HTTP $gh_code)"
+            log_error "GitHub code search: invalid token (HTTP $gh_code)"
+        elif [[ "$gh_code" == "000" ]]; then
+            _api_status[GitHub]="connection failed"
+            log_error "GitHub code search: connection failed"
+        else
+            _api_status[GitHub]="unexpected HTTP $gh_code"
+            log_warn "GitHub code search: unexpected HTTP $gh_code"
+        fi
+    else
+        _api_status[GitHub]="no token configured"
+    fi
+
+    # --- URLScan.io ---
+    if [[ -n "${URLSCAN_API_KEY:-}" ]]; then
+        total=$((total + 1))
+        local us_code
+        # suppress curl transport-noise on stderr; non-200/failure is captured via the || us_code="000" fallback and classified below
+        us_code=$(curl -s -o /dev/null -w "%{http_code}" \
+            --proto =https --max-time 15 --max-redirs 5 \
+            -H "API-Key: $URLSCAN_API_KEY" \
+            "https://urlscan.io/api/v1/search/?q=test&size=1" 2>/dev/null) || us_code="000"
+        if [[ "$us_code" == "200" ]]; then
+            _api_status[URLScan]="ready"; ready=$((ready + 1))
+        elif [[ "$us_code" == "401" || "$us_code" == "403" ]]; then
+            _api_status[URLScan]="invalid key (HTTP $us_code)"
+            log_error "URLScan.io: invalid key (HTTP $us_code)"
+        elif [[ "$us_code" == "000" ]]; then
+            _api_status[URLScan]="connection failed"
+            log_error "URLScan.io: connection failed"
+        else
+            _api_status[URLScan]="unexpected HTTP $us_code"
+            log_warn "URLScan.io: unexpected HTTP $us_code"
+        fi
+    else
+        _api_status[URLScan]="no key configured"
+    fi
+
     # --- 4chan Archives (via web search dorks) ---
     if [[ "$FOURCHAN_ENABLED" == "true" ]]; then
         if [[ -n "${TAVILY_API_KEY:-}" || -n "${BRAVE_API_KEY:-}" ]]; then
@@ -420,7 +558,7 @@ check_api_quotas() {
 
     # Print per-API status summary
     log_info "API status: ${ready}/${total} APIs ready"
-    for api_name in Brave Tavily NIST OTX xAI 4chan; do
+    for api_name in Brave Tavily NIST OTX xAI GitHub URLScan 4chan; do
         log_debug "  ${api_name}: ${_api_status[$api_name]:-unknown}"
     done
 

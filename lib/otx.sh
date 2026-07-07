@@ -19,13 +19,9 @@ otx_search() {
         return 0
     fi
 
+    local -a _otx_hdrs=(-H "X-OTX-API-KEY: $OTX_API_KEY")
     local response http_code body
-    response=$(curl -s -w "\n%{http_code}" \
-        --proto =https \
-        --max-time 30 --max-redirs 5 \
-        -H "X-OTX-API-KEY: $OTX_API_KEY" \
-        "https://otx.alienvault.com/api/v1/search/pulses?q=${encoded_keyword}" \
-        2>/dev/null)
+    response=$(http_request GET "https://otx.alienvault.com/api/v1/search/pulses?q=${encoded_keyword}" _otx_hdrs)
 
     http_code=$(echo "$response" | tail -n1)
     body=$(echo "$response" | sed '$d')
